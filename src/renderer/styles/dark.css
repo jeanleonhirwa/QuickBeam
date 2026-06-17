@@ -1,0 +1,77 @@
+body {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+:root {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #121212;
+  --card-bg: #252525;
+  --border-color: #333333;
+  --hover-bg: #2a2a2a;
+  --active-bg: #333333;
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --accent-color: #f5c542;
+}
+
+.titlebar {
+  background: #1a1a1a;
+}
+
+.sidebar {
+  background: #121212;
+}
+
+.titlebar-btn.minimize:hover,
+.titlebar-btn.maximize:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.device-card {
+  background: #252525;
+}
+
+.device-card:hover {
+  background: #2a2a2a;
+}
+
+.pairing-icon {
+  background: #252525;
+}
+
+.progress-bar {
+  background: #2a2a2a;
+}
+
+.setting-input {
+  background: #252525;
+}
+
+.setting-input:focus {
+  background: #2a2a2a;
+}
+
+.history-item {
+  background: #252525;
+}
+
+.toggle-btn {
+  border-color: #444444;
+}
+
+.toggle-btn:hover {
+  border-color: var(--accent-color);
+}
+
+.empty-state svg {
+  color: #555555;
+}
+
+.btn-secondary {
+  background: #333333;
+}
+
+.btn-secondary:hover {
+  background: #444444;
+}
