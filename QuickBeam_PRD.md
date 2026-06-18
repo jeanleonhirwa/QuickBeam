@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-**QuickBeam** is a peer-to-peer desktop file sharing application built with Electron.js that enables students to share files and folders directly between PCs without requiring internet, routers, or external storage devices. The app provides high-speed transfer comparable to USB drive speeds.
+**QuickBeam** is a peer-to-peer desktop file sharing application built with Electron.js that enables students to share files and folders directly between PCs **without internet, routers, or external storage devices**. The app uses WiFi Direct Legacy Hosted Network for automatic PC-to-PC connection.
 
 ---
 
@@ -12,13 +12,14 @@ In school environments:
 - Flash disks are hard to borrow and often unavailable
 - Bluetooth is extremely slow (can take days for large files like movies/games)
 - Internet-based solutions require connectivity that may not be available
+- Windows Mobile Hotspot requires internet connection
 - Students need a fast, reliable way to share notes, songs, videos, and movies
 
 ---
 
 ## 3. Solution
 
-QuickBeam provides direct PC-to-PC file transfer over local network connections (WiFi Direct or Ethernet), achieving speeds comparable to or faster than USB transfers. No intermediate devices required.
+QuickBeam provides direct PC-to-PC file transfer using **WiFi Direct Legacy Hosted Network** - a Windows feature that creates a WiFi access point without internet. The app handles everything automatically - users just create/join rooms and transfer files.
 
 ---
 
@@ -26,80 +27,153 @@ QuickBeam provides direct PC-to-PC file transfer over local network connections 
 
 | Goal | Objective |
 |------|-----------|
-| Fast Transfer | Achieve transfer speeds ≥ USB 3.0 (5 Gbps theoretical, ~400 MB/s practical) |
-| Easy Discovery | Auto-discover nearby PCs running QuickBeam |
-| Secure Transfer | Require explicit pairing and file acceptance |
+| Fast Transfer | Achieve WiFi Direct speeds (50-150 Mbps) |
+| Easy Discovery | Auto-discover nearby PCs via room codes |
+| Secure Transfer | Require room codes and file acceptance |
 | No Dependencies | Work without internet, routers, or external hardware |
-| User Friendly | Simple 3-step process: Scan → Pair → Transfer |
+| User Friendly | Simple 3-step process: Create/Join Room → Select Files → Transfer |
 
 ---
 
-## 5. User Stories
+## 5. Connection Method: WiFi Direct Legacy Hosted Network
 
-### Sender Flow
-1. As a student, I want to scan for nearby PCs so I can find who to share with
-2. As a student, I want to send a pairing request so the receiver knows I want to connect
-3. As a student, I want to select files/folders from my PC so I can choose what to share
-4. As a student, I want to see transfer progress so I know how long it will take
+### Why WiFi Direct?
 
-### Receiver Flow
-1. As a student, I want to see incoming pairing requests so I can accept or reject
-2. As a student, I want to see incoming file requests so I can accept or reject files
-3. As a student, I want to see where files will be saved so I can organize them
-4. As a student, I want to see transfer progress so I know when it's complete
+| Method | No Internet? | Auto? | User Action | Works? |
+|--------|-------------|-------|-------------|--------|
+| Mobile Hotspot | ❌ Needs internet | ❌ Manual | Go to Settings | Limited |
+| **WiFi Direct (Hosted Network)** | ✅ No internet | ✅ Automatic | None - app handles it | ✅ Best |
+| WiFi Direct (Windows API) | ✅ No internet | ✅ Automatic | None | Complex |
+| Ethernet Cable | ✅ No internet | ✅ Plug & play | Plug cable | If cable available |
+
+### How WiFi Direct Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    WiFi Direct Flow                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  PC A (Host)                    PC B (Joiner)                │
+│  ───────────                    ─────────────                │
+│  1. Click "Create Room"         1. Click "Join Room"         │
+│           │                              │                   │
+│           v                              v                   │
+│  2. App runs:                    2. Enter code from PC A     │
+│     netsh wlan set hosted                   │                 │
+│     network mode=allow                      v                 │
+│           │                         3. App runs:              │
+│           v                            netsh wlan connect    │
+│  3. WiFi Direct network                     │                 │
+│     created automatically                   v                 │
+│           │                         4. Connected to WiFi      │
+│           v                            Direct network         │
+│  4. Shows room code                            │                 │
+│     (SSID + Password)                          v                 │
+│           │                         5. UDP discovery          │
+│           v                            finds PC A             │
+│  5. Waiting for other PC                     │                 │
+│           │                                   v                 │
+│           v                         6. Ready to transfer!     │
+│  6. Ready to transfer!                                          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Technical Implementation
+
+**Host PC (creates network):**
+```bash
+# Create hosted network (no internet needed)
+netsh wlan set hostednetwork mode=allow ssid="QB_Laptop1_XYZ" key="qb12345"
+netsh wlan start hostednetwork
+```
+
+**Joiner PC (connects to network):**
+```bash
+# Connect to the hosted network
+netsh wlan connect name="QB_Laptop1_XYZ"
+```
+
+**Cleanup (on app exit):**
+```bash
+# Stop hosted network
+netsh wlan stop hostednetwork
+```
 
 ---
 
-## 6. Features
+## 6. User Stories
 
-### 6.1 Core Features (MVP)
+### Host Flow
+1. As a student, I want to click "Create Room" so a WiFi Direct network is created automatically
+2. As a student, I want to see a room code so I can share it with the other PC
+3. As a student, I want to copy the code easily so I can send it via chat/message
+4. As a student, I want to see when the other PC joins so I know we're connected
+
+### Joiner Flow
+1. As a student, I want to click "Join Room" so I can connect to another PC
+2. As a student, I want to enter a simple code so I can connect quickly
+3. As a student, I want to see when I'm connected so I know I can transfer files
+
+### Transfer Flow
+1. As a student, I want to select files/folders so I can choose what to share
+2. As a student, I want to see transfer progress so I know how long it will take
+3. As a student, I want to accept/reject incoming files for security
+
+---
+
+## 7. Features
+
+### 7.1 Core Features (Implemented)
 
 | Feature | Description |
 |---------|-------------|
-| **Device Discovery** | Auto-scan local network for QuickBeam instances |
-| **Pairing System** | Request/accept/reject pairing between devices |
-| **File Selection** | Browse and select individual files or entire folders |
-| **File Transfer** | High-speed peer-to-peer data transfer |
-| **Progress Tracking** | Real-time transfer progress with speed and ETA |
-| **Transfer History** | Log of completed transfers |
+| **WiFi Direct Connection** | Automatic PC-to-PC connection without internet |
+| **Room System** | Create Room / Join Room with simple codes |
+| **Device Discovery** | Auto-discover devices on WiFi Direct network |
+| **File Selection** | Browse, select files, or drag & drop |
+| **File Transfer** | Length-prefixed binary protocol |
+| **Progress Tracking** | Real-time transfer speed and ETA |
+| **Transfer History** | Persisted log of completed transfers |
+| **Dark/Light Theme** | Toggle between themes |
 
-### 6.2 Secondary Features (v1.1+)
+### 7.2 Secondary Features (Implemented)
 
 | Feature | Description |
 |---------|-------------|
-| **Resume Transfer** | Resume interrupted transfers |
-| **Queue Management** | Queue multiple transfers |
-| **Drag & Drop** | Drag files onto app to send |
+| **Resume Transfer** | Retry button when transfer fails |
+| **Queue Management** | Queue multiple transfers (max 3 concurrent) |
+| **Drag & Drop** | Drag files onto app window |
 | **Notifications** | System notifications for events |
-| **Dark/Light Theme** | Toggle between themes (inspired by UI references) |
-| **Connection Quality** | Display signal/connection strength |
+| **Connection Quality** | WiFi signal indicator |
 
-### 6.3 Future Features (v2.0+)
+### 7.3 Future Features (v2.0+)
 
 | Feature | Description |
 |---------|-------------|
+| **Pause/Resume** | Pause active transfer and resume later |
+| **Folder Recursive** | Recursively send folder contents |
 | **Chat** | Text messaging during transfer |
 | **Group Sharing** | Share with multiple devices at once |
-| **Clipboard Sync** | Copy/paste between connected devices |
 | **Mobile Support** | Android/iOS companion app |
 
 ---
 
-## 7. Technical Architecture
+## 8. Technical Architecture
 
-### 7.1 Technology Stack
+### 8.1 Technology Stack
 
 | Component | Technology |
 |-----------|------------|
 | **Desktop Framework** | Electron.js |
 | **Frontend** | HTML5, CSS3, JavaScript |
 | **Backend** | Node.js (Electron main process) |
-| **Network Discovery** | mDNS/DNS-SD (Bonjour) or UDP broadcast |
-| **Data Transfer** | Raw TCP sockets or WebRTC data channels |
-| **File System** | Node.js fs module |
-| **IPC** | Electron IPC for renderer↔main communication |
+| **WiFi Direct** | Windows `netsh` commands |
+| **Discovery** | UDP broadcast (port 58585) |
+| **Transfer** | TCP sockets (port 58586) |
+| **Storage** | electron-store for settings/history |
 
-### 7.2 System Architecture
+### 8.2 System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -107,343 +181,122 @@ QuickBeam provides direct PC-to-PC file transfer over local network connections 
 ├─────────────────────────────────────────────────────────────┤
 │  Renderer Process (UI)                                      │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │  Discovery   │  │   Pairing   │  │  Transfer Progress  │ │
-│  │    View      │  │    View     │  │       View          │ │
+│  │  Connect     │  │  Devices    │  │  Transfer Progress  │ │
+│  │  (Room)      │  │    View     │  │       View          │ │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘ │
 ├─────────────────────────────────────────────────────────────┤
 │  Main Process (Node.js)                                     │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │  Network     │  │  Pairing    │  │   File Transfer     │ │
-│  │  Discovery   │  │  Manager    │  │      Engine         │ │
+│  │WiFi Direct  │  │  Network    │  │   File Transfer     │ │
+│  │  Manager    │  │  Discovery  │  │      Engine         │ │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘ │
 ├─────────────────────────────────────────────────────────────┤
-│  Operating System                                           │
+│  Windows OS                                                 │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │         Network Interface (WiFi/Ethernet)               ││
+│  │      netsh wlan (WiFi Direct Hosted Network)            ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 7.3 Connection Method
+### 8.3 Connection Protocol
 
-**Primary: TCP/IP over Local Network**
-- Both devices must be on same network (WiFi or Ethernet)
-- Use TCP sockets for reliable, ordered data transfer
-- Direct connection without router (ad-hoc mode supported)
+**WiFi Direct Setup:**
+1. Host creates hosted network via `netsh wlan set hostednetwork`
+2. Host starts network via `netsh wlan start hostednetwork`
+3. Joiner connects via `netsh wlan connect`
+4. Both PCs now on same subnet (192.168.x.x or 169.254.x.x)
 
-**Discovery Protocol:**
-1. UDP broadcast on port `58585` for device announcement
-2. Each device broadcasts its hostname and IP periodically
+**Device Discovery:**
+1. UDP broadcast on port 58585 every 2 seconds
+2. Broadcast contains: deviceId, hostname, IP, port
 3. Listeners capture broadcasts and maintain peer list
+4. Stale devices removed after 10 seconds
 
-**Transfer Protocol:**
-1. Sender initiates TCP connection to receiver on port `58586`
-2. Metadata (file names, sizes, checksums) sent first
-3. Receiver confirms acceptance
-4. Binary data streamed in chunks (64KB default)
-5. Checksum verification on completion
-
----
-
-## 8. UI/UX Design
-
-### 8.1 Design Principles (from UI Inspiration)
-
-- **Dark/Light Theme**: Toggle support (ui1.png = dark, ui2.png = light)
-- **Clean Minimalist Layout**: Sidebar navigation, focused content area
-- **Typography**: Clear, readable fonts with proper hierarchy
-- **Color Palette**: 
-  - Dark theme: #1E1E1E background, #FFFFFF text, #F5C542 accent (gold)
-  - Light theme: #F5F5F0 background, #1E1E1E text, same gold accent
-- **Spacing**: Generous padding, breathable layout
-
-### 8.2 Screen Layout
-
-```
-┌────────────────────────────────────────────────────────────┐
-│  ☰ QuickBeam                              🌙 [Theme] ─ □ X│
-├──────────────┬─────────────────────────────────────────────┤
-│              │                                             │
-│   QUICKBEAM  │   [Main Content Area]                       │
-│              │                                             │
-│  ┌────────┐  │   DISCOVER VIEW:                            │
-│  │  LOGO  │  │   ┌─────────────────────────────────────┐  │
-│  └────────┘  │   │  Scanning for nearby devices...      │  │
-│              │   │  ● ● ● (animation)                    │  │
-│  STATS       │   └─────────────────────────────────────┘  │
-│  ─────────   │                                             │
-│  Sent: 12    │   ┌─────────────────────────────────────┐  │
-│  Received: 8 │   │  DEVICES FOUND                       │  │
-│              │   │  ┌─────────────────────────────────┐ │  │
-│  ─────────   │   │  │ 💻 LAPTOP-ABC      [Connect]    │ │  │
-│              │   │  │ 💻 DESKTOP-XYZ     [Connect]    │ │  │
-│  QUICK       │   │  │ 💻 STUDENT-PC      [Connect]    │ │  │
-│  ACTIONS     │   │  └─────────────────────────────────┘ │  │
-│  ─────────   │   └─────────────────────────────────────┘  │
-│  [Scan]      │                                             │
-│  [History]   │   PAIRING VIEW:                             │
-│  [Settings]  │   ┌─────────────────────────────────────┐  │
-│              │   │  📱 Pairing Request from USER-123    │  │
-│              │   │                                     │  │
-│              │   │     [Accept]        [Reject]        │  │
-│              │   └─────────────────────────────────────┘  │
-│              │                                             │
-│              │   TRANSFER VIEW:                            │
-│              │   ┌─────────────────────────────────────┐  │
-│              │   │  Sending: movie.mp4 (1.2 GB)        │  │
-│              │   │  ████████████░░░░░░░░  65%           │  │
-│              │   │  Speed: 125 MB/s | ETA: 4s           │  │
-│              │   └─────────────────────────────────────┘  │
-│              │                                             │
-└──────────────┴─────────────────────────────────────────────┘
-```
-
-### 8.3 Screens
-
-| Screen | Purpose |
-|--------|---------|
-| **Discovery** | Show scan button, list discovered devices |
-| **Pairing Request** | Accept/reject incoming connection |
-| **File Selector** | Browse and select files/folders to send |
-| **Transfer Progress** | Show active transfer with progress bar |
-| **Settings** | App preferences, download location, themes |
-| **History** | Past transfers log |
+**File Transfer:**
+1. Sender connects to receiver on port 58586
+2. Sends TRANSFER_INIT with file metadata (length-prefixed)
+3. Receiver shows accept/reject dialog
+4. On accept, sender sends file chunks (length-prefixed binary)
+5. Receiver writes chunks to disk
+6. SHA-256 checksum verification on completion
 
 ---
 
-## 9. Data Models
-
-### 9.1 Device
-```json
-{
-  "id": "uuid",
-  "hostname": "STUDENT-LAPTOP",
-  "ip": "192.168.1.105",
-  "mac": "AA:BB:CC:DD:EE:FF",
-  "port": 58586,
-  "status": "available|paired|transferring",
-  "lastSeen": "2026-06-17T10:30:00Z"
-}
-```
-
-### 9.2 Transfer
-```json
-{
-  "id": "uuid",
-  "type": "send|receive",
-  "peerId": "device-uuid",
-  "files": [
-    {
-      "name": "movie.mp4",
-      "size": 1288490188,
-      "path": "/path/to/file",
-      "checksum": "sha256-hash"
-    }
-  ],
-  "totalSize": 1288490188,
-  "bytesTransferred": 837518622,
-  "status": "pending|active|completed|failed|cancelled",
-  "speed": 131072000,
-  "startTime": "2026-06-17T10:30:00Z",
-  "endTime": null
-}
-```
-
-### 9.3 AppSettings
-```json
-{
-  "hostname": "My Laptop",
-  "downloadPath": "C:\\Users\\...\\Downloads\\QuickBeam",
-  "theme": "dark",
-  "port": 58586,
-  "autoAccept": false,
-  "maxConcurrentTransfers": 3
-}
-```
-
----
-
-## 10. Network Protocol
-
-### 10.1 Discovery Protocol
-```
-Port: 58585 (UDP Broadcast)
-
-Broadcast Message:
-{
-  "type": "announce",
-  "appId": "quickbeam",
-  "version": "1.0.0",
-  "hostname": "STUDENT-LAPTOP",
-  "ip": "192.168.1.105",
-  "port": 58586,
-  "timestamp": 1687001400
-}
-```
-
-### 10.2 Pairing Protocol
-```
-Port: 58586 (TCP)
-
-1. Sender → Receiver: PAIR_REQUEST { senderHostname, senderIp }
-2. Receiver → Sender: PAIR_ACCEPT | PAIR_REJECT
-3. Connection established
-```
-
-### 10.3 Transfer Protocol
-```
-1. Sender → Receiver: TRANSFER_INIT { files: [{ name, size, checksum }] }
-2. Receiver → Sender: TRANSFER_ACCEPT | TRANSFER_REJECT
-3. Sender → Receiver: FILE_DATA { chunk } (64KB chunks)
-4. Receiver → Sender: FILE_ACK { bytesReceived }
-5. Repeat 3-4 until complete
-6. Receiver → Sender: TRANSFER_COMPLETE { checksums }
-```
-
----
-
-## 11. Security Considerations
-
-| Concern | Mitigation |
-|---------|------------|
-| **Unauthorized Access** | Pairing required before transfer |
-| **Malicious Files** | User must explicitly accept incoming files |
-| **Data Integrity** | SHA-256 checksums verified after transfer |
-| **Privacy** | No data leaves local network |
-| **File Overwrite** | Check for existing files, prompt user |
-
----
-
-## 12. Performance Requirements
-
-| Metric | Target |
-|--------|--------|
-| **Transfer Speed** | ≥ 100 MB/s (WiFi), ≥ 500 MB/s (Ethernet) |
-| **Discovery Time** | < 5 seconds to find nearby devices |
-| **Connection Time** | < 2 seconds to establish pairing |
-| **Memory Usage** | < 200 MB RAM |
-| **CPU Usage** | < 30% during transfer |
-| **Max File Size** | No limit (limited by disk space) |
-
----
-
-## 13. Platform Support
-
-| Platform | Status | Notes |
-|----------|--------|-------|
-| **Windows** | MVP | Primary target (school laptops) |
-| **macOS** | v1.1 | Secondary target |
-| **Linux** | v1.1 | Community support |
-
----
-
-## 14. Project Structure
+## 9. File Structure
 
 ```
 QuickBeam/
-├── package.json
-├── electron.js              # Main process
-├── preload.js               # Preload script
+├── electron.js              # Main process, IPC handlers
+├── preload.js               # Secure bridge to renderer
 ├── src/
-│   ├── renderer/            # UI (HTML/CSS/JS)
-│   │   ├── index.html
+│   ├── main/
+│   │   ├── network.js       # UDP discovery & TCP pairing
+│   │   ├── transfer.js      # File transfer engine
+│   │   ├── storage.js       # Settings & history
+│   │   ├── wifi-commands.js # netsh command wrappers
+│   │   └── wifi-direct.js   # WiFi Direct manager
+│   ├── renderer/
+│   │   ├── index.html       # All views
 │   │   ├── styles/
 │   │   │   ├── main.css
 │   │   │   ├── dark.css
 │   │   │   └── light.css
-│   │   ├── scripts/
-│   │   │   ├── app.js
-│   │   │   ├── discovery.js
-│   │   │   ├── pairing.js
-│   │   │   └── transfer.js
-│   │   └── assets/
-│   │       └── icons/
-│   ├── main/                # Main process modules
-│   │   ├── network.js       # Discovery & connection
-│   │   ├── transfer.js      # File transfer engine
-│   │   └── storage.js       # Settings & history
-│   └── shared/              # Shared constants/utils
+│   │   └── scripts/
+│   │       └── app.js       # Frontend logic
+│   └── shared/
 │       ├── constants.js
 │       └── utils.js
-├── tests/
-└── build/                   # Build configuration
+├── QuickBeam_PRD.md
+├── WIFI_CONNECTION_REPORT.md
+├── PROGRESS_REPORT.md
+└── package.json
 ```
 
 ---
 
-## 15. Development Phases
+## 10. Implementation Status
 
-### Phase 1: Foundation (Week 1-2)
-- [ ] Project setup (Electron, build tools)
-- [ ] Basic UI framework with theme support
-- [ ] Network discovery implementation
-- [ ] Device list rendering
-
-### Phase 2: Connection (Week 3-4)
-- [ ] Pairing protocol implementation
-- [ ] Pairing UI (accept/reject)
-- [ ] Connection state management
-
-### Phase 3: Transfer (Week 5-6)
-- [ ] File selection UI
-- [ ] Transfer engine implementation
-- [ ] Progress tracking UI
-- [ ] Transfer history
-
-### Phase 4: Polish (Week 7-8)
-- [ ] Error handling
-- [ ] Resume capability
-- [ ] Settings page
-- [ ] Testing & optimization
+| Component | Status | Notes |
+|-----------|--------|-------|
+| WiFi Direct | ✅ Implemented | Hosted Network via netsh |
+| Room System | ✅ Implemented | Create/Join with codes |
+| Device Discovery | ✅ Implemented | UDP broadcast |
+| Pairing System | ✅ Implemented | TCP request/accept |
+| File Transfer | ✅ Implemented | Length-prefixed binary |
+| Progress Tracking | ✅ Implemented | Real-time speed/ETA |
+| Transfer History | ✅ Implemented | Persisted to disk |
+| Dark/Light Theme | ✅ Implemented | Toggle switch |
+| Drag & Drop | ✅ Implemented | File selection |
+| Notifications | ✅ Implemented | System notifications |
 
 ---
 
-## 16. Success Metrics
+## 11. Testing Checklist
 
-| Metric | Target |
-|--------|--------|
-| **Transfer Speed** | Matches or exceeds USB 3.0 |
-| **User Satisfaction** | 4.5+ rating in school testing |
-| **Adoption** | 50+ active users in first month |
-| **Reliability** | < 1% transfer failure rate |
-
----
-
-## 17. Risks & Mitigations
-
-| Risk | Impact | Mitigation |
-|------|--------|------------|
-| WiFi interference | Slow transfers | Support Ethernet fallback |
-| Firewall blocking | Connection fails | Guide users to allow app |
-| Large file handling | Memory issues | Stream in chunks |
-| Cross-platform issues | Inconsistent behavior | Thorough testing |
+- [ ] WiFi Direct creates network without internet
+- [ ] Other PC can connect with room code
+- [ ] Both PCs discover each other via UDP
+- [ ] Pairing works over WiFi Direct
+- [ ] File transfer works at good speed
+- [ ] Large files (>1GB) transfer successfully
+- [ ] Folders transfer recursively
+- [ ] Cancel stops transfer mid-way
+- [ ] Retry works after failed transfer
+- [ ] Works on Windows 10
+- [ ] Works on Windows 11
+- [ ] Cleanup works (network stops on app close)
 
 ---
 
-## 18. Open Questions
+## 12. Requirements
 
-1. Should we support WiFi Direct (no router) or require same network?
-2. Should transfers be encrypted by default?
-3. Should we implement a "trust device" feature for repeated transfers?
-4. What's the maximum folder depth to support?
-
----
-
-## 19. Appendix
-
-### UI Inspiration Analysis
-- **ui1.png**: Dark theme - black background (#1E1E1E), gold accent (#F5C542), clean sidebar
-- **ui2.png**: Light theme - cream background (#F5F5F0), same gold accent, minimal design
-- **Key Elements**: Sidebar navigation, circular progress indicator, clean typography, toggle theme
-
-### Similar Applications
-- **Xender**: Mobile file sharing (reference for features)
-- **Snapdrop**: Web-based local file sharing
-- **LANDrop**: Cross-platform LAN file transfer
-- **LocalSend**: Open-source AirDrop alternative
+- **OS**: Windows 10/11
+- **Hardware**: WiFi adapter that supports hosted network
+- **Network**: None required (WiFi Direct)
+- **Internet**: None required
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: June 17, 2026  
-**Author**: QuickBeam Development Team
+**Document Version**: 2.0  
+**Last Updated**: June 18, 2026  
+**Connection Method**: WiFi Direct Legacy Hosted Network
