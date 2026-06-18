@@ -1,6 +1,6 @@
 const App = {
   state: {
-    currentView: 'devices',
+    currentView: 'connect',
     theme: 'dark',
     devices: [],
     selectedDevice: null,
@@ -10,6 +10,10 @@ const App = {
     pendingTransfer: null,
     currentTransfer: null,
     isScanning: false,
+    isHosting: false,
+    isJoining: false,
+    wifiSupported: false,
+    wifiInfo: null,
     transferQueue: []
   },
 

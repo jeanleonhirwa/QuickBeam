@@ -58,17 +58,17 @@
 
       <div class="quick-actions">
         <h3 class="section-title">QUICK ACTIONS</h3>
-        <button class="action-btn" id="btn-scan">
+        <button class="action-btn" id="btn-create-room">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            <circle cx="12" cy="12" r="10"/><path d="M12 8V16M8 12H16"/>
           </svg>
-          Scan Devices
+          Create Room
         </button>
-        <button class="action-btn" id="btn-send">
+        <button class="action-btn" id="btn-join-room">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+            <circle cx="12" cy="12" r="10"/><path d="M8 12L16 12"/>
           </svg>
-          Send Files
+          Join Room
         </button>
         <button class="action-btn" id="btn-history">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -103,8 +103,116 @@
       </div>
 
       <div class="content-body">
+        <!-- Connection View -->
+        <div class="view" id="view-connect">
+          <div class="connect-container">
+            <div class="connect-icon">
+              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>
+              </svg>
+            </div>
+            <h2 class="connect-title">Connect to Another PC</h2>
+            <p class="connect-subtitle">No internet or router needed</p>
+
+            <div class="connect-options">
+              <button class="connect-btn primary" id="btn-create-room-main">
+                <div class="connect-btn-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M12 8V16M8 12H16"/>
+                  </svg>
+                </div>
+                <div class="connect-btn-text">
+                  <span class="connect-btn-title">Create Room</span>
+                  <span class="connect-btn-hint">Make this PC discoverable</span>
+                </div>
+              </button>
+
+              <div class="connect-divider">
+                <span>OR</span>
+              </div>
+
+              <button class="connect-btn secondary" id="btn-join-room-main">
+                <div class="connect-btn-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/><path d="M8 12L16 12"/>
+                  </svg>
+                </div>
+                <div class="connect-btn-text">
+                  <span class="connect-btn-title">Join Room</span>
+                  <span class="connect-btn-hint">Connect to another PC</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Host Room View -->
+        <div class="view hidden" id="view-host">
+          <div class="host-container">
+            <div class="host-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><path d="M12 8V16M8 12H16"/>
+              </svg>
+            </div>
+            <h2 class="host-title">Room Created!</h2>
+            <p class="host-subtitle">Share this code with the other PC</p>
+
+            <div class="room-code-card">
+              <div class="room-code-label">ROOM CODE</div>
+              <div class="room-code-value" id="room-code">QB_XXXX</div>
+              <div class="room-password-label">PASSWORD</div>
+              <div class="room-password-value" id="room-password">qb123456</div>
+              <button class="btn btn-secondary btn-copy" id="btn-copy-code">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy Code
+              </button>
+            </div>
+
+            <div class="waiting-animation">
+              <div class="pulse-ring"></div>
+              <div class="pulse-ring delay-1"></div>
+              <svg class="waiting-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21H16M12 17V21"/>
+              </svg>
+            </div>
+            <p class="waiting-text">Waiting for other PC to join...</p>
+
+            <button class="btn btn-cancel" id="btn-stop-room">Stop Room</button>
+          </div>
+        </div>
+
+        <!-- Join Room View -->
+        <div class="view hidden" id="view-join">
+          <div class="join-container">
+            <div class="join-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><path d="M8 12L16 12"/>
+              </svg>
+            </div>
+            <h2 class="join-title">Join a Room</h2>
+            <p class="join-subtitle">Enter the code from the other PC</p>
+
+            <div class="join-form">
+              <div class="form-group">
+                <label class="form-label">ROOM CODE</label>
+                <input type="text" class="form-input" id="input-room-code" placeholder="QB_XXXX" autocomplete="off">
+              </div>
+              <div class="form-group">
+                <label class="form-label">PASSWORD</label>
+                <input type="text" class="form-input" id="input-room-password" placeholder="Enter password" autocomplete="off">
+              </div>
+              <button class="btn btn-primary btn-large" id="btn-join-connect">Connect</button>
+            </div>
+
+            <button class="btn btn-text" id="btn-back-connect">Back</button>
+          </div>
+        </div>
+
         <!-- Device List View -->
-        <div class="view" id="view-devices">
+        <div class="view hidden" id="view-devices">
           <div class="device-list" id="device-list">
             <div class="empty-state" id="empty-devices">
               <div class="scan-animation">

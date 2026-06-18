@@ -861,3 +861,269 @@ body {
   margin-top: 8px;
   margin-bottom: 16px;
 }
+
+.connect-container,
+.host-container,
+.join-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 40px;
+}
+
+.connect-icon,
+.host-icon,
+.join-icon {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--hover-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  color: var(--accent-color);
+}
+
+.connect-title,
+.host-title,
+.join-title {
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.connect-subtitle,
+.host-subtitle,
+.join-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 40px;
+}
+
+.connect-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.connect-btn {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  border-radius: 16px;
+  border: 2px solid var(--border-color);
+  background: var(--card-bg);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.connect-btn:hover {
+  border-color: var(--accent-color);
+  transform: translateY(-2px);
+}
+
+.connect-btn.primary {
+  border-color: var(--accent-color);
+  background: rgba(245, 197, 66, 0.1);
+}
+
+.connect-btn-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  background: var(--hover-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  flex-shrink: 0;
+}
+
+.connect-btn-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.connect-btn-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.connect-btn-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.connect-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 2px;
+}
+
+.connect-divider::before,
+.connect-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.room-code-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 32px;
+  min-width: 300px;
+}
+
+.room-code-label,
+.room-password-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.room-code-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent-color);
+  font-family: monospace;
+  margin-bottom: 24px;
+  letter-spacing: 2px;
+}
+
+.room-password-value {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: monospace;
+  margin-bottom: 24px;
+}
+
+.btn-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.waiting-animation {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.waiting-icon {
+  color: var(--accent-color);
+  z-index: 1;
+}
+
+.waiting-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+}
+
+.join-form {
+  width: 100%;
+  max-width: 360px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.form-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 16px 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 18px;
+  font-family: monospace;
+  letter-spacing: 2px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.form-input::placeholder {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 16px;
+}
+
+.btn-large {
+  padding: 16px 32px;
+  font-size: 16px;
+  width: 100%;
+}
+
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px 16px;
+  margin-top: 16px;
+}
+
+.btn-text:hover {
+  color: var(--text-primary);
+}
+
+.wifi-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--hover-bg);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 16px;
+}
+
+.wifi-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.wifi-status-dot.connected {
+  background: #22c55e;
+}

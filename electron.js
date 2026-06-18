@@ -116,6 +116,37 @@ function initializeServices() {
     const fileCount = request.files ? request.files.length : 0;
     sendNotification('Incoming Transfer', `${request.hostname} wants to send ${fileCount} file(s)`);
   });
+
+  // Initialize WiFi Direct
+  const WifiDirectManager = require('./src/main/wifi-direct');
+  wifiDirect = new WifiDirectManager(storage);
+
+  wifiDirect.on('networkReady', (info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wifi:networkReady', info);
+    }
+    sendNotification('Room Created', `Share code: ${info.ssid}`);
+  });
+
+  wifiDirect.on('connected', (info) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wifi:connected', info);
+    }
+  });
+
+  wifiDirect.on('disconnected', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wifi:disconnected');
+    }
+  });
+
+  wifiDirect.initialize().then(supported => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('wifi:supported', supported);
+    }
+  }).catch(err => {
+    console.error('WiFi Direct init error:', err);
+  });
 }
 
 function setupIPC() {
@@ -245,6 +276,55 @@ function setupIPC() {
   ipcMain.handle('files:drop', (event, filePaths) => {
     return filePaths || [];
   });
+
+  // WiFi Direct handlers
+  ipcMain.handle('wifi:supported', async () => {
+    if (!wifiDirect) return false;
+    return wifiDirect.hostedNetworkSupported;
+  });
+
+  ipcMain.handle('wifi:host', async () => {
+    if (!wifiDirect) return { success: false, error: 'WiFi Direct not initialized' };
+    try {
+      const info = await wifiDirect.hostNetwork();
+      return { success: true, info };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('wifi:join', async (event, { ssid, password }) => {
+    if (!wifiDirect) return { success: false, error: 'WiFi Direct not initialized' };
+    try {
+      const info = await wifiDirect.joinNetwork(ssid, password);
+      return { success: true, info };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('wifi:status', async () => {
+    if (!wifiDirect) return { supported: false, isHost: false, isConnected: false };
+    return {
+      supported: wifiDirect.hostedNetworkSupported,
+      isHost: wifiDirect.isHost,
+      isConnected: wifiDirect.isConnected,
+      ssid: wifiDirect.ssid,
+      connectionInfo: wifiDirect.connectionInfo
+    };
+  });
+
+  ipcMain.handle('wifi:cleanup', async () => {
+    if (wifiDirect) {
+      await wifiDirect.cleanup();
+    }
+  });
+
+  ipcMain.handle('wifi:stop', async () => {
+    if (wifiDirect) {
+      await wifiDirect.cleanup();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -274,7 +354,10 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
+  if (wifiDirect) {
+    try { await wifiDirect.cleanup(); } catch (e) {}
+  }
   if (networkManager) {
     try { networkManager.stop(); } catch (e) {}
   }

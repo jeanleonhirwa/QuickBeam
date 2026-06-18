@@ -50,14 +50,16 @@ contextBridge.exposeInMainWorld('quickbeam', {
     drop: (filePaths) => ipcRenderer.invoke('files:drop', filePaths)
   },
 
-  history: {
-    get: () => ipcRenderer.invoke('history:get'),
-    clear: () => ipcRenderer.invoke('history:clear')
-  },
-
-  dialog: {
-    openFiles: () => ipcRenderer.invoke('dialog:openFiles'),
-    openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
-    selectFolder: () => ipcRenderer.invoke('dialog:selectFolder')
+  wifi: {
+    supported: () => ipcRenderer.invoke('wifi:supported'),
+    host: () => ipcRenderer.invoke('wifi:host'),
+    join: (ssid, password) => ipcRenderer.invoke('wifi:join', { ssid, password }),
+    status: () => ipcRenderer.invoke('wifi:status'),
+    cleanup: () => ipcRenderer.invoke('wifi:cleanup'),
+    stop: () => ipcRenderer.invoke('wifi:stop'),
+    onSupported: (callback) => ipcRenderer.on('wifi:supported', (e, v) => callback(v)),
+    onNetworkReady: (callback) => ipcRenderer.on('wifi:networkReady', (e, info) => callback(info)),
+    onConnected: (callback) => ipcRenderer.on('wifi:connected', (e, info) => callback(info)),
+    onDisconnected: (callback) => ipcRenderer.on('wifi:disconnected', () => callback())
   }
 });
