@@ -5,6 +5,7 @@
   "main": "electron.js",
   "scripts": {
     "start": "electron .",
+    "start:win": "start.bat",
     "dev": "electron . --dev",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
