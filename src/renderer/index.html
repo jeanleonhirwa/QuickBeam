@@ -162,6 +162,13 @@
         <!-- Transfer Progress View -->
         <div class="view hidden" id="view-transfer">
           <div class="transfer-card">
+            <div class="transfer-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 15V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V15"/>
+                <path d="M7 10L12 15L17 10"/>
+                <path d="M12 15V3"/>
+              </svg>
+            </div>
             <div class="transfer-info">
               <h3 id="transfer-filename">file.mp4</h3>
               <p id="transfer-size">0 MB / 1.2 GB</p>
@@ -173,7 +180,10 @@
               <span id="transfer-speed">0 MB/s</span>
               <span id="transfer-eta">Calculating...</span>
             </div>
-            <button class="btn btn-cancel" id="btn-cancel-transfer">Cancel</button>
+            <div class="transfer-actions">
+              <button class="btn btn-cancel" id="btn-cancel-transfer">Cancel</button>
+              <button class="btn btn-primary" id="btn-retry-transfer" style="display:none">Retry</button>
+            </div>
           </div>
         </div>
 

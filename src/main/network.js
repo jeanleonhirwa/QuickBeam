@@ -85,6 +85,10 @@ class NetworkManager extends EventEmitter {
   }
 
   handleAnnouncement(data, rinfo) {
+    const timeSinceLastSeen = this.devices.has(data.deviceId) 
+      ? Date.now() - (this.devices.get(data.deviceId).lastSeen || 0)
+      : Infinity;
+
     const device = {
       id: data.deviceId,
       hostname: data.hostname,
@@ -92,7 +96,8 @@ class NetworkManager extends EventEmitter {
       port: data.port,
       status: this.pairedDevices.has(data.deviceId) ? DEVICE_STATUS.PAIRED : DEVICE_STATUS.AVAILABLE,
       lastSeen: Date.now(),
-      version: data.version
+      version: data.version,
+      quality: timeSinceLastSeen < 3000 ? 100 : timeSinceLastSeen < 5000 ? 70 : 40
     };
 
     if (!this.devices.has(device.id)) {
@@ -102,6 +107,8 @@ class NetworkManager extends EventEmitter {
       const existing = this.devices.get(device.id);
       existing.lastSeen = Date.now();
       existing.status = device.status;
+      existing.quality = device.quality;
+      this.emit('deviceFound', existing);
     }
   }
 
@@ -353,6 +360,21 @@ class NetworkManager extends EventEmitter {
       return null;
     }
     return device.socket;
+  }
+
+  getConnectionQuality(deviceId) {
+    const device = this.devices.get(deviceId);
+    if (!device) {
+      return { quality: 0 };
+    }
+
+    const timeSinceLastSeen = Date.now() - (device.lastSeen || 0);
+    let quality = 100;
+
+    if (timeSinceLastSeen > 5000) quality = 50;
+    if (timeSinceLastSeen > 8000) quality = 20;
+
+    return { quality, lastSeen: device.lastSeen };
   }
 }
 

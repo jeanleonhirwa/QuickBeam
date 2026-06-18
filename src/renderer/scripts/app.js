@@ -7,7 +7,10 @@ const App = {
     selectedFiles: [],
     transfers: [],
     pairingRequest: null,
-    isScanning: false
+    pendingTransfer: null,
+    currentTransfer: null,
+    isScanning: false,
+    transferQueue: []
   },
 
   init() {
@@ -15,6 +18,7 @@ const App = {
     this.loadSettings();
     this.bindEvents();
     this.bindIPC();
+    this.initDragDrop();
   },
 
   cacheElements() {
@@ -47,6 +51,7 @@ const App = {
         settings: document.getElementById('view-settings')
       },
       pairingHostname: document.getElementById('pairing-hostname'),
+      pairingSubtitle: document.querySelector('.pairing-subtitle'),
       btnPairAccept: document.getElementById('btn-pair-accept'),
       btnPairReject: document.getElementById('btn-pair-reject'),
       selectedFiles: document.getElementById('selected-files'),
@@ -59,13 +64,16 @@ const App = {
       transferSpeed: document.getElementById('transfer-speed'),
       transferEta: document.getElementById('transfer-eta'),
       btnCancelTransfer: document.getElementById('btn-cancel-transfer'),
+      btnRetryTransfer: document.getElementById('btn-retry-transfer'),
       historyList: document.getElementById('history-list'),
       settingHostname: document.getElementById('setting-hostname'),
       settingDownloadPath: document.getElementById('setting-download-path'),
       settingPort: document.getElementById('setting-port'),
       settingAutoAccept: document.getElementById('setting-auto-accept'),
       btnChangePath: document.getElementById('btn-change-path'),
-      btnSaveSettings: document.getElementById('btn-save-settings')
+      btnSaveSettings: document.getElementById('btn-save-settings'),
+      dropZone: document.querySelector('.content-body'),
+      connectionQuality: document.getElementById('connection-quality')
     };
   },
 
@@ -88,6 +96,9 @@ const App = {
     this.els.btnAddFolder.addEventListener('click', () => this.addFolder());
     this.els.btnStartTransfer.addEventListener('click', () => this.startTransfer());
     this.els.btnCancelTransfer.addEventListener('click', () => this.cancelTransfer());
+    if (this.els.btnRetryTransfer) {
+      this.els.btnRetryTransfer.addEventListener('click', () => this.retryTransfer());
+    }
 
     this.els.btnChangePath.addEventListener('click', () => this.changeDownloadPath());
     this.els.btnSaveSettings.addEventListener('click', () => this.saveSettings());
@@ -96,6 +107,10 @@ const App = {
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
         this.toggleScan();
+      }
+      if (e.ctrlKey && e.key === 'o') {
+        e.preventDefault();
+        this.addFiles();
       }
     });
   },
@@ -114,6 +129,37 @@ const App = {
     window.quickbeam.transfer.onFailed((error) => this.onTransferFailed(error));
   },
 
+  initDragDrop() {
+    const dropZone = document.body;
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('drag-over');
+
+      const files = Array.from(e.dataTransfer.files).map(f => f.path);
+      if (files.length > 0) {
+        this.state.selectedFiles = [...this.state.selectedFiles, ...files];
+        this.renderSelectedFiles();
+        if (this.state.selectedDevice) {
+          this.showView('files');
+        }
+      }
+    });
+  },
+
   async loadSettings() {
     const settings = await window.quickbeam.settings.get();
     this.state.theme = settings.theme || 'dark';
@@ -127,7 +173,7 @@ const App = {
 
   showView(viewName) {
     this.state.currentView = viewName;
-    
+
     Object.values(this.els.views).forEach(v => v.classList.add('hidden'));
     this.els.views[viewName].classList.remove('hidden');
 
@@ -142,7 +188,7 @@ const App = {
 
     const subtitles = {
       devices: this.state.isScanning ? 'Scanning for nearby devices...' : 'Click "Scan Devices" to find nearby QuickBeam users',
-      pairing: 'Connection request received',
+      pairing: this.state.pairingSubtitle?.textContent || 'Connection request received',
       files: 'Select files to send',
       transfer: 'Transferring files...',
       history: 'Your transfer history',
@@ -218,10 +264,13 @@ const App = {
           <div class="device-name">${device.hostname}</div>
           <div class="device-ip">${device.ip}</div>
         </div>
-        <span class="device-status ${device.status === 'paired' ? 'paired' : ''}">${device.status}</span>
+        <div class="device-meta">
+          <span class="device-status ${device.status === 'paired' ? 'paired' : ''}">${device.status}</span>
+          ${device.quality ? `<span class="connection-quality" title="Connection quality">${this.getQualityIcon(device.quality)}</span>` : ''}
+        </div>
         <div class="device-actions">
-          ${device.status === 'paired' 
-            ? `<button class="btn btn-primary btn-connect" data-id="${device.id}">Connect</button>`
+          ${device.status === 'paired'
+            ? `<button class="btn btn-primary btn-connect" data-id="${device.id}">Send</button>`
             : `<button class="btn btn-secondary btn-pair" data-id="${device.id}">Pair</button>`
           }
         </div>
@@ -243,6 +292,12 @@ const App = {
     });
   },
 
+  getQualityIcon(quality) {
+    if (quality >= 80) return '<svg width="16" height="16" viewBox="0 0 24 24" fill="#22c55e"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>';
+    if (quality >= 50) return '<svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>';
+    return '<svg width="16" height="16" viewBox="0 0 24 24" fill="#ef4444"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>';
+  },
+
   createEmptyDevices() {
     const div = document.createElement('div');
     div.className = 'empty-state';
@@ -257,13 +312,18 @@ const App = {
         </svg>
       </div>
       <p>Click "Scan Devices" to find nearby QuickBeam users</p>
+      <p class="hint">or drag & drop files here to quick send</p>
     `;
     return div;
   },
 
   async pairDevice(deviceId) {
-    await window.quickbeam.pair.request(deviceId);
-    this.els.pageSubtitle.textContent = 'Pairing request sent...';
+    const result = await window.quickbeam.pair.request(deviceId);
+    if (result.success) {
+      this.els.pageSubtitle.textContent = 'Pairing request sent...';
+    } else {
+      this.els.pageSubtitle.textContent = 'Failed to send pairing request';
+    }
   },
 
   connectDevice(deviceId) {
@@ -274,6 +334,9 @@ const App = {
   onPairRequest(request) {
     this.state.pairingRequest = request;
     this.els.pairingHostname.textContent = request.hostname;
+    if (this.els.pairingSubtitle) {
+      this.els.pairingSubtitle.textContent = 'wants to connect with you';
+    }
     this.showView('pairing');
   },
 
@@ -331,8 +394,11 @@ const App = {
             <path d="M13 2V9H20"/>
           </svg>
           <p>No files selected</p>
-          <button class="btn btn-secondary" id="btn-add-files">Add Files</button>
-          <button class="btn btn-secondary" id="btn-add-folder">Add Folder</button>
+          <p class="hint">Drag & drop files here or click buttons below</p>
+          <div class="file-btn-group">
+            <button class="btn btn-secondary" id="btn-add-files">Add Files</button>
+            <button class="btn btn-secondary" id="btn-add-folder">Add Folder</button>
+          </div>
         </div>
       `;
       document.getElementById('btn-add-files').addEventListener('click', () => this.addFiles());
@@ -340,29 +406,52 @@ const App = {
       return;
     }
 
-    this.els.selectedFiles.innerHTML = this.state.selectedFiles.map((file, index) => {
-      const name = file.split(/[/\\]/).pop();
-      const isFolder = !name.includes('.');
-      return `
-        <div class="file-item">
-          <div class="file-icon">
-            ${isFolder 
-              ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19C22 20.1046 21.1046 21 20 21H4C2.89543 21 2 20.1046 2 19V5C2 3.89543 2.89543 3 4 3H9L11 6H20C21.1046 6 22 6.89543 22 8V19Z"/></svg>'
-              : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z"/><path d="M14 2V8H20"/></svg>'
-            }
+    const totalSize = this.state.selectedFiles.reduce((sum, file) => {
+      try {
+        const name = file.split(/[/\\]/).pop();
+        if (name.includes('.')) {
+          return sum;
+        }
+        return sum;
+      } catch (e) {
+        return sum;
+      }
+    }, 0);
+
+    this.els.selectedFiles.innerHTML = `
+      <div class="selected-header">
+        <span class="selected-count">${this.state.selectedFiles.length} item(s) selected</span>
+        <button class="btn btn-text btn-clear" id="btn-clear-files">Clear All</button>
+      </div>
+      ${this.state.selectedFiles.map((file, index) => {
+        const name = file.split(/[/\\]/).pop();
+        const isFolder = !name.includes('.');
+        return `
+          <div class="file-item">
+            <div class="file-icon ${isFolder ? 'folder' : 'file'}">
+              ${isFolder
+                ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19C22 20.1046 21.1046 21 20 21H4C2.89543 21 2 20.1046 2 19V5C2 3.89543 2.89543 3 4 3H9L11 6H20C21.1046 6 22 6.89543 22 8V19Z"/></svg>'
+                : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z"/><path d="M14 2V8H20"/></svg>'
+              }
+            </div>
+            <div class="file-info">
+              <div class="file-name">${name}</div>
+              <div class="file-path">${file}</div>
+            </div>
+            <button class="file-remove" data-index="${index}" title="Remove">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6L18 18"/>
+              </svg>
+            </button>
           </div>
-          <div class="file-info">
-            <div class="file-name">${name}</div>
-            <div class="file-size">${isFolder ? 'Folder' : 'File'}</div>
-          </div>
-          <button class="file-remove" data-index="${index}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6L18 18"/>
-            </svg>
-          </button>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('')}
+    `;
+
+    document.getElementById('btn-clear-files')?.addEventListener('click', () => {
+      this.state.selectedFiles = [];
+      this.renderSelectedFiles();
+    });
 
     this.els.selectedFiles.querySelectorAll('.file-remove').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -379,20 +468,32 @@ const App = {
 
     const result = await window.quickbeam.transfer.send(this.state.selectedDevice, this.state.selectedFiles);
     if (result.success) {
-      this.showView('transfer');
       this.state.currentTransfer = result.transferId;
+      if (result.queued) {
+        this.els.pageSubtitle.textContent = `Queued (position: ${result.position})`;
+        this.state.transferQueue.push(result.transferId);
+      } else {
+        this.showView('transfer');
+      }
     }
   },
 
   onTransferRequest(request) {
     this.state.pendingTransfer = request;
+    this.els.pairingHostname.textContent = request.hostname;
+    if (this.els.pairingSubtitle) {
+      const fileCount = request.files ? request.files.length : 0;
+      const totalSize = request.files ? request.files.reduce((sum, f) => sum + (f.size || 0), 0) : 0;
+      this.els.pairingSubtitle.textContent = `wants to send ${fileCount} file(s) (${this.formatBytes(totalSize)})`;
+    }
+    this.btnPairAccept.textContent = 'Accept';
     this.showView('pairing');
-    this.els.pairingHostname.textContent = `${request.hostname} wants to send you ${request.files.length} file(s)`;
   },
 
   async acceptTransfer() {
     if (this.state.pendingTransfer) {
       await window.quickbeam.transfer.accept(this.state.pendingTransfer.id);
+      this.state.currentTransfer = this.state.pendingTransfer.id;
       this.state.pendingTransfer = null;
       this.showView('transfer');
     }
@@ -408,13 +509,13 @@ const App = {
 
   onTransferProgress(progress) {
     const percent = Math.round((progress.bytesTransferred / progress.totalSize) * 100);
-    
+
     this.els.transferFilename.textContent = progress.fileName;
     this.els.transferSize.textContent = `${this.formatBytes(progress.bytesTransferred)} / ${this.formatBytes(progress.totalSize)}`;
     this.els.transferProgress.style.width = `${percent}%`;
     this.els.transferSpeed.textContent = `${this.formatBytes(progress.speed)}/s`;
-    
-    const remaining = (progress.totalSize - progress.bytesTransferred) / progress.speed;
+
+    const remaining = progress.speed > 0 ? (progress.totalSize - progress.bytesTransferred) / progress.speed : 0;
     this.els.transferEta.textContent = remaining > 0 ? `ETA: ${this.formatDuration(remaining)}` : 'Almost done...';
 
     const circumference = 283;
@@ -428,10 +529,18 @@ const App = {
     this.els.percentValue.textContent = '100';
     this.els.transferSpeed.textContent = 'Complete!';
     this.els.transferEta.textContent = '';
-    
+    this.els.btnCancelTransfer.style.display = 'none';
+    if (this.els.btnRetryTransfer) {
+      this.els.btnRetryTransfer.style.display = 'none';
+    }
+
+    this.state.transferQueue = this.state.transferQueue.filter(id => id !== transfer.id);
+
     setTimeout(() => {
       this.showView('devices');
       this.state.selectedFiles = [];
+      this.state.currentTransfer = null;
+      this.els.btnCancelTransfer.style.display = '';
       this.updateStats();
     }, 2000);
   },
@@ -439,22 +548,42 @@ const App = {
   onTransferFailed(error) {
     this.els.transferSpeed.textContent = 'Failed';
     this.els.transferEta.textContent = error.error || 'Transfer failed';
-    
+    this.els.transferProgress.style.background = '#ef4444';
+    if (this.els.btnRetryTransfer) {
+      this.els.btnRetryTransfer.style.display = '';
+    }
+
     setTimeout(() => {
-      this.showView('devices');
-    }, 3000);
+      this.els.transferProgress.style.background = '';
+    }, 100);
   },
 
   async cancelTransfer() {
     if (this.state.currentTransfer) {
       await window.quickbeam.transfer.cancel(this.state.currentTransfer);
+      this.state.currentTransfer = null;
       this.showView('devices');
+    }
+  },
+
+  async retryTransfer() {
+    if (this.state.currentTransfer) {
+      const result = await window.quickbeam.transfer.retry(this.state.currentTransfer);
+      if (result.success) {
+        this.els.transferSpeed.textContent = 'Retrying...';
+        this.els.transferEta.textContent = '';
+        this.els.transferProgress.style.width = '0%';
+        this.els.percentValue.textContent = '0';
+        if (this.els.btnRetryTransfer) {
+          this.els.btnRetryTransfer.style.display = 'none';
+        }
+      }
     }
   },
 
   async showHistory() {
     const history = await window.quickbeam.history.get();
-    
+
     if (history.length === 0) {
       this.els.historyList.innerHTML = `
         <div class="empty-state">
@@ -468,14 +597,14 @@ const App = {
       this.els.historyList.innerHTML = history.map(item => `
         <div class="history-item">
           <div class="history-icon ${item.type}">
-            ${item.type === 'sent' 
+            ${item.type === 'sent'
               ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>'
               : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V15"/><path d="M7 10L12 15L17 10"/><path d="M12 15V3"/></svg>'
             }
           </div>
           <div class="history-info">
             <div class="history-title">${item.files.map(f => f.name).join(', ')}</div>
-            <div class="history-meta">${this.formatBytes(item.totalSize)} • ${new Date(item.timestamp).toLocaleDateString()}</div>
+            <div class="history-meta">${this.formatBytes(item.totalSize)} &bull; ${new Date(item.timestamp).toLocaleDateString()}</div>
           </div>
           <span class="history-status ${item.status}">${item.status}</span>
         </div>
@@ -523,7 +652,7 @@ const App = {
 
   applyTheme(theme) {
     this.els.themeStylesheet.href = `styles/${theme}.css`;
-    this.els.themeIcon.textContent = theme === 'dark' ? '☀' : '☾';
+    this.els.themeIcon.textContent = theme === 'dark' ? '\u2600' : '\u263E';
   },
 
   updateStats() {
