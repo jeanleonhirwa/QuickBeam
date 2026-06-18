@@ -42,69 +42,51 @@ QuickBeam is an Electron-based peer-to-peer file sharing app for students. The a
 
 ---
 
-## CRITICAL ISSUES - Must Fix Before Use
+## CRITICAL ISSUES - FIXED
 
-### 1. Transfer Flow Not Connected (HIGH PRIORITY)
+### 1. Transfer Flow Not Connected - FIXED
 
-**Problem:** When sender clicks "Send Files", the transfer is created locally but never actually sent to the receiver. The `startTransfer()` in `transfer.js` only creates a transfer object - it doesn't establish a TCP connection to the receiver.
+**Solution:** Added `connectToReceiver()` method that:
+- Looks up device by ID from network manager
+- Creates TCP connection to receiver's IP/port
+- Sends TRANSFER_INIT with length-prefixed protocol
+- Waits for TRANSFER_ACCEPT before sending chunks
 
-**Missing in `transfer.js`:**
-```javascript
-// After creating transfer object, need to:
-// 1. Connect to receiver's IP/port
-// 2. Send TRANSFER_INIT message with file metadata
-// 3. Wait for TRANSFER_ACCEPT before sending chunks
-```
+### 2. Receiver Never Gets Transfer Request - FIXED
 
-**Missing in `network.js`:**
-```javascript
-// Need to handle TRANSFER_INIT messages on the server
-// and route them to the transfer engine
-```
+**Solution:** Wired network manager's transferRequest event to transfer engine:
+- `electron.js` now routes `networkManager.on('transferRequest')` to `transferEngine.handleIncomingTransfer()`
+- Transfer engine emits its own `transferRequest` event to UI
+- UI shows accept/reject dialog for incoming transfers
 
-### 2. Receiver Never Gets Transfer Request (HIGH PRIORITY)
+### 3. Socket Reuse Issues - FIXED
 
-**Problem:** The `handleMessage()` in `network.js` handles `TRANSFER_INIT` but just emits an event. The transfer engine never receives this event because the event handlers aren't wired correctly.
+**Solution:** Transfer uses dedicated socket from TRANSFER_INIT:
+- Sender creates new TCP connection for transfer
+- Receiver stores socket in pending transfer
+- Same socket used for entire transfer lifecycle
+- No dependency on pairing socket
 
-**Current flow (broken):**
-```
-Sender: startTransfer() -> creates local transfer object -> stops here
-Receiver: Never notified
-```
+### 4. Binary Data Handling - FIXED
 
-**Required flow:**
-```
-Sender: startTransfer() -> connect to receiver -> send TRANSFER_INIT -> wait for accept -> send chunks
-Receiver: receive TRANSFER_INIT -> show accept/reject dialog -> accept -> receive chunks -> save files
-```
-
-### 3. Socket Reuse Issues (MEDIUM PRIORITY)
-
-**Problem:** The pairing socket is stored but the transfer uses a new connection. The socket from pairing might be closed by the time transfer starts.
-
-**Fix needed:** Keep the paired connection alive or re-establish before transfer.
-
-### 4. Binary Data Handling (MEDIUM PRIORITY)
-
-**Problem:** In `receiveFile()`, the code does:
-```javascript
-const chunkData = buffer.substring(0, message.size);
-```
-This treats binary data as string, which corrupts files. Binary data needs proper Buffer handling.
+**Solution:** Rewrote protocol to use length-prefixed messages:
+- Added `sendLengthPrefixed(socket, data)` - sends 4-byte length + data
+- Added `receiveLengthPrefixed(socket)` - reads 4-byte length, then data
+- Server auto-detects protocol (length-prefixed vs newline-delimited)
+- Binary data preserved as Buffer, not converted to string
 
 ---
 
 ## What's Left to Complete
 
-### Phase 3: Critical Fixes (Must Do)
+### Phase 3: Testing (Must Do)
 
 | Task | Priority | Description |
 |------|----------|-------------|
-| Fix transfer initiation | HIGH | Sender must connect to receiver and send TRANSFER_INIT |
-| Fix receiver notification | HIGH | Wire network events to transfer engine properly |
-| Fix binary data handling | HIGH | Use Buffer.slice() instead of string operations |
-| Fix socket management | HIGH | Keep paired connections alive for transfers |
 | Test with 2 PCs | HIGH | End-to-end testing on same network |
+| Test large files | HIGH | Verify multi-GB transfers work |
+| Test folder send | HIGH | Verify recursive folder transfer |
+| Test cancel/retry | HIGH | Verify error handling works |
 
 ### Phase 4: Enhanced Features
 
@@ -200,11 +182,15 @@ Before claiming "working", these scenarios must pass:
 | Category | Status |
 |----------|--------|
 | UI/Frontend | 90% Complete |
-| Backend Logic | 70% Complete |
-| End-to-End Flow | 30% Complete |
+| Backend Logic | 90% Complete |
+| End-to-End Flow | 80% Complete |
 | Testing | 0% Complete |
 | Production Ready | No |
 
-**Bottom Line:** The app structure is solid, but the core transfer mechanism doesn't actually work between two PCs yet. The sender creates a transfer object locally but never sends it over the network. This is the #1 blocker.
+**Bottom Line:** All 4 critical issues are now fixed. The transfer flow is complete:
+1. Sender connects to receiver and sends TRANSFER_INIT
+2. Receiver gets notified and shows accept/reject dialog
+3. On accept, sender sends file chunks using length-prefixed protocol
+4. Receiver writes chunks to disk with proper binary handling
 
-**Estimated work to fix:** 4-6 hours of focused coding on the transfer flow + 2 hours testing.
+**Next Step:** Test with 2 PCs on the same network to verify end-to-end transfer works.

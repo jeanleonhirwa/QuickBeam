@@ -133,13 +133,57 @@ class NetworkManager extends EventEmitter {
   }
 
   handleConnection(socket) {
-    let buffer = '';
+    let headerBuf = Buffer.alloc(0);
+    let expecting = 'detect';
+    let expectedLen = 0;
+    let newlineBuffer = '';
 
-    socket.on('data', (data) => {
-      buffer += data.toString();
+    const detectProtocol = (data) => {
+      if (data.length >= 4) {
+        const possibleLen = data.readUInt32BE(0);
+        if (possibleLen > 0 && possibleLen < 1048576) {
+          return 'lengthprefixed';
+        }
+      }
+      return 'newline';
+    };
 
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
+    const processLengthPrefixed = (chunk) => {
+      if (expecting === 'header') {
+        headerBuf = Buffer.concat([headerBuf, chunk]);
+        if (headerBuf.length >= 4) {
+          expectedLen = headerBuf.readUInt32BE(0);
+          headerBuf = headerBuf.slice(4);
+          expecting = 'data';
+          if (headerBuf.length > 0) {
+            processLengthPrefixed(Buffer.alloc(0));
+          }
+        }
+      } else if (expecting === 'data') {
+        if (chunk.length >= expectedLen) {
+          const messageBuf = chunk.slice(0, expectedLen);
+          const remaining = chunk.slice(expectedLen);
+          expecting = 'header';
+          headerBuf = Buffer.alloc(0);
+
+          try {
+            const message = JSON.parse(messageBuf.toString());
+            this.handleMessage(message, socket);
+          } catch (e) {
+            console.error('Invalid message:', e.message);
+          }
+
+          if (remaining.length > 0) {
+            processLengthPrefixed(remaining);
+          }
+        }
+      }
+    };
+
+    const processNewline = (data) => {
+      newlineBuffer += data.toString();
+      const lines = newlineBuffer.split('\n');
+      newlineBuffer = lines.pop();
 
       for (const line of lines) {
         if (line.trim()) {
@@ -150,6 +194,22 @@ class NetworkManager extends EventEmitter {
             console.error('Invalid message:', e.message);
           }
         }
+      }
+    };
+
+    socket.on('data', (data) => {
+      if (expecting === 'detect') {
+        const protocol = detectProtocol(data);
+        expecting = protocol === 'lengthprefixed' ? 'header' : 'newline';
+        if (protocol === 'lengthprefixed') {
+          processLengthPrefixed(data);
+        } else {
+          processNewline(data);
+        }
+      } else if (expecting === 'newline') {
+        processNewline(data);
+      } else {
+        processLengthPrefixed(data);
       }
     });
 

@@ -81,7 +81,7 @@ class TransferEngine extends EventEmitter {
         return;
       }
 
-      const socket = net.createConnection(device.port, device.ip, () => {
+      const socket = net.createConnection(device.port, device.ip, async () => {
         transfer.socket = socket;
         this.transferSockets.set(transfer.id, socket);
 
@@ -95,14 +95,12 @@ class TransferEngine extends EventEmitter {
             size: f.size,
             checksum: f.checksum
           }))
-        }) + '\n';
+        });
 
-        socket.write(initMessage);
+        await this.sendLengthPrefixed(socket, initMessage);
         console.log('Sent TRANSFER_INIT to', device.hostname);
-      });
 
-      socket.on('data', (data) => {
-        this.handleSenderSocketData(transfer, data);
+        this.waitForAcceptance(transfer, socket, resolve);
       });
 
       socket.on('error', (err) => {
@@ -130,20 +128,26 @@ class TransferEngine extends EventEmitter {
     });
   }
 
-  handleSenderSocketData(transfer, data) {
-    const messageStr = data.toString().split('\n')[0];
+  async waitForAcceptance(transfer, socket, resolve) {
     try {
-      const message = JSON.parse(messageStr);
+      const msgBuf = await this.receiveLengthPrefixed(socket);
+      const message = JSON.parse(msgBuf.toString());
+
       if (message.type === MESSAGE_TYPES.TRANSFER_ACCEPT) {
         console.log('Transfer accepted, sending files...');
+        resolve(true);
         this.sendFiles(transfer);
       } else if (message.type === MESSAGE_TYPES.TRANSFER_REJECT) {
         console.log('Transfer rejected');
         transfer.status = TRANSFER_STATUS.FAILED;
         this.emit('transferFailed', { transferId: transfer.id, error: 'Transfer rejected by receiver' });
+        resolve(false);
       }
-    } catch (e) {
-      // Ignore parse errors on partial data
+    } catch (err) {
+      console.error('Wait for acceptance error:', err.message);
+      transfer.status = TRANSFER_STATUS.FAILED;
+      this.emit('transferFailed', { transferId: transfer.id, error: err.message });
+      resolve(false);
     }
   }
 
@@ -223,7 +227,7 @@ class TransferEngine extends EventEmitter {
     });
   }
 
-  acceptTransfer(transferId) {
+  async acceptTransfer(transferId) {
     const transfer = this.pendingTransfers.get(transferId);
     if (!transfer) {
       return { success: false, error: 'Transfer not found' };
@@ -239,8 +243,8 @@ class TransferEngine extends EventEmitter {
       const acceptMessage = JSON.stringify({
         type: MESSAGE_TYPES.TRANSFER_ACCEPT,
         transferId
-      }) + '\n';
-      transfer.socket.write(acceptMessage);
+      });
+      await this.sendLengthPrefixed(transfer.socket, acceptMessage);
     } catch (err) {
       console.error('Accept message error:', err);
     }
@@ -249,7 +253,7 @@ class TransferEngine extends EventEmitter {
     return { success: true };
   }
 
-  rejectTransfer(transferId) {
+  async rejectTransfer(transferId) {
     const transfer = this.pendingTransfers.get(transferId);
     if (!transfer) {
       return { success: false, error: 'Transfer not found' };
@@ -259,8 +263,8 @@ class TransferEngine extends EventEmitter {
       const rejectMessage = JSON.stringify({
         type: MESSAGE_TYPES.TRANSFER_REJECT,
         transferId
-      }) + '\n';
-      transfer.socket.write(rejectMessage);
+      });
+      await this.sendLengthPrefixed(transfer.socket, rejectMessage);
     } catch (err) {
       console.error('Reject message error:', err);
     }
@@ -269,7 +273,7 @@ class TransferEngine extends EventEmitter {
     return { success: true };
   }
 
-  cancelTransfer(transferId) {
+  async cancelTransfer(transferId) {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) {
       return { success: false, error: 'Transfer not found' };
@@ -283,8 +287,8 @@ class TransferEngine extends EventEmitter {
         const cancelMessage = JSON.stringify({
           type: MESSAGE_TYPES.TRANSFER_CANCEL,
           transferId
-        }) + '\n';
-        transfer.socket.write(cancelMessage);
+        });
+        await this.sendLengthPrefixed(transfer.socket, cancelMessage);
       }
     } catch (err) {
       console.error('Cancel message error:', err);
@@ -316,8 +320,8 @@ class TransferEngine extends EventEmitter {
         type: MESSAGE_TYPES.TRANSFER_COMPLETE,
         transferId: transfer.id,
         checksums: transfer.files.map(f => ({ name: f.name, checksum: f.checksum }))
-      }) + '\n';
-      transfer.socket.write(completeMessage);
+      });
+      await this.sendLengthPrefixed(transfer.socket, completeMessage);
     } catch (err) {
       console.error('Complete message error:', err);
     }
@@ -329,23 +333,25 @@ class TransferEngine extends EventEmitter {
   }
 
   sendFileChunk(transfer, file) {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const fileStream = fs.createReadStream(file.path);
       const fileSize = file.size;
       let bytesSent = 0;
       let lastEmit = Date.now();
 
-      fileStream.on('data', (chunk) => {
+      fileStream.on('data', async (chunk) => {
         try {
-          const initData = JSON.stringify({
+          fileStream.pause();
+
+          const header = JSON.stringify({
             type: MESSAGE_TYPES.FILE_DATA,
             transferId: transfer.id,
             fileName: file.name,
             offset: bytesSent,
             size: chunk.length
-          }) + '\n';
-          transfer.socket.write(initData);
-          transfer.socket.write(chunk);
+          });
+          await this.sendLengthPrefixed(transfer.socket, header);
+          await this.sendLengthPrefixed(transfer.socket, chunk);
 
           bytesSent += chunk.length;
           transfer.bytesTransferred += chunk.length;
@@ -363,6 +369,8 @@ class TransferEngine extends EventEmitter {
             });
             lastEmit = now;
           }
+
+          fileStream.resume();
         } catch (err) {
           fileStream.destroy();
           reject(err);
@@ -371,6 +379,49 @@ class TransferEngine extends EventEmitter {
 
       fileStream.on('end', resolve);
       fileStream.on('error', reject);
+    });
+  }
+
+  sendLengthPrefixed(socket, data) {
+    return new Promise((resolve, reject) => {
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      const lenBuf = Buffer.alloc(4);
+      lenBuf.writeUInt32BE(buf.length, 0);
+      socket.write(lenBuf, () => {
+        socket.write(buf, resolve);
+      });
+    });
+  }
+
+  receiveLengthPrefixed(socket) {
+    return new Promise((resolve, reject) => {
+      let headerBuf = Buffer.alloc(0);
+      let dataBuf = Buffer.alloc(0);
+      let expecting = 'header';
+      let expectedLen = 0;
+
+      const onData = (chunk) => {
+        if (expecting === 'header') {
+          headerBuf = Buffer.concat([headerBuf, chunk]);
+          if (headerBuf.length >= 4) {
+            expectedLen = headerBuf.readUInt32BE(0);
+            headerBuf = headerBuf.slice(4);
+            expecting = 'data';
+            if (headerBuf.length > 0) {
+              onData(Buffer.alloc(0));
+            }
+          }
+        } else {
+          dataBuf = Buffer.concat([dataBuf, chunk]);
+          if (dataBuf.length >= expectedLen) {
+            socket.removeListener('data', onData);
+            resolve(dataBuf.slice(0, expectedLen));
+          }
+        }
+      };
+
+      socket.on('data', onData);
+      socket.once('error', reject);
     });
   }
 
@@ -386,23 +437,14 @@ class TransferEngine extends EventEmitter {
       console.error('Create download dir error:', err);
     }
 
-    let buffer = '';
     let currentFile = null;
     let fileStream = null;
 
-    transfer.socket.on('data', async (data) => {
-      buffer += data.toString();
-
-      while (buffer.length > 0) {
-        const newlineIndex = buffer.indexOf('\n');
-
-        if (newlineIndex === -1) break;
-
-        const messageStr = buffer.substring(0, newlineIndex);
-        buffer = buffer.substring(newlineIndex + 1);
-
-        try {
-          const message = JSON.parse(messageStr);
+    const receiveLoop = async () => {
+      try {
+        while (transfer.status === TRANSFER_STATUS.ACTIVE) {
+          const msgBuf = await this.receiveLengthPrefixed(transfer.socket);
+          const message = JSON.parse(msgBuf.toString());
 
           if (message.type === MESSAGE_TYPES.FILE_DATA) {
             if (!fileStream || currentFile !== message.fileName) {
@@ -414,10 +456,8 @@ class TransferEngine extends EventEmitter {
               fileStream = fs.createWriteStream(filePath);
             }
 
-            const chunkData = buffer.substring(0, message.size);
-            buffer = buffer.substring(message.size);
-
-            fileStream.write(Buffer.from(chunkData, 'binary'));
+            const chunkData = await this.receiveLengthPrefixed(transfer.socket);
+            fileStream.write(chunkData);
             transfer.bytesTransferred += chunkData.length;
 
             const now = Date.now();
@@ -437,11 +477,11 @@ class TransferEngine extends EventEmitter {
               fileStream.end();
               fileStream = null;
             }
-
             transfer.status = TRANSFER_STATUS.COMPLETED;
             transfer.endTime = Date.now();
             this.activeTransfers.delete(transfer.id);
             this.emit('transferComplete', transfer);
+            break;
 
           } else if (message.type === MESSAGE_TYPES.TRANSFER_CANCEL) {
             if (fileStream) {
@@ -452,12 +492,20 @@ class TransferEngine extends EventEmitter {
             transfer.endTime = Date.now();
             this.activeTransfers.delete(transfer.id);
             this.emit('transferFailed', { transferId: transfer.id, error: 'Cancelled by sender' });
+            break;
           }
-        } catch (e) {
-          // Skip invalid messages
         }
+      } catch (err) {
+        console.error('Receive loop error:', err.message);
+        if (fileStream) {
+          fileStream.end();
+          fileStream = null;
+        }
+        transfer.status = TRANSFER_STATUS.FAILED;
+        transfer.endTime = Date.now();
+        this.emit('transferFailed', { transferId: transfer.id, error: err.message });
       }
-    });
+    };
 
     transfer.socket.on('error', (err) => {
       console.error('Transfer socket error:', err.message);
@@ -465,6 +513,8 @@ class TransferEngine extends EventEmitter {
       transfer.endTime = Date.now();
       this.emit('transferFailed', { transferId: transfer.id, error: err.message });
     });
+
+    receiveLoop();
   }
 }
 
