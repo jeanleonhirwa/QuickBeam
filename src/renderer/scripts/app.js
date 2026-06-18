@@ -333,10 +333,12 @@ const App = {
 
   onPairRequest(request) {
     this.state.pairingRequest = request;
+    this.state.pendingTransfer = null;
     this.els.pairingHostname.textContent = request.hostname;
     if (this.els.pairingSubtitle) {
       this.els.pairingSubtitle.textContent = 'wants to connect with you';
     }
+    this.els.btnPairAccept.textContent = 'Accept';
     this.showView('pairing');
   },
 
@@ -354,7 +356,12 @@ const App = {
   },
 
   async acceptPairing() {
-    if (this.state.pairingRequest) {
+    if (this.state.pendingTransfer) {
+      await window.quickbeam.transfer.accept(this.state.pendingTransfer.id);
+      this.state.currentTransfer = this.state.pendingTransfer.id;
+      this.state.pendingTransfer = null;
+      this.showView('transfer');
+    } else if (this.state.pairingRequest) {
       await window.quickbeam.pair.accept(this.state.pairingRequest.id);
       this.state.pairingRequest = null;
       this.showView('devices');
@@ -362,7 +369,11 @@ const App = {
   },
 
   async rejectPairing() {
-    if (this.state.pairingRequest) {
+    if (this.state.pendingTransfer) {
+      await window.quickbeam.transfer.reject(this.state.pendingTransfer.id);
+      this.state.pendingTransfer = null;
+      this.showView('devices');
+    } else if (this.state.pairingRequest) {
       await window.quickbeam.pair.reject(this.state.pairingRequest.id);
       this.state.pairingRequest = null;
       this.showView('devices');
@@ -480,13 +491,14 @@ const App = {
 
   onTransferRequest(request) {
     this.state.pendingTransfer = request;
+    this.state.pairingRequest = null;
     this.els.pairingHostname.textContent = request.hostname;
     if (this.els.pairingSubtitle) {
       const fileCount = request.files ? request.files.length : 0;
       const totalSize = request.files ? request.files.reduce((sum, f) => sum + (f.size || 0), 0) : 0;
       this.els.pairingSubtitle.textContent = `wants to send ${fileCount} file(s) (${this.formatBytes(totalSize)})`;
     }
-    this.btnPairAccept.textContent = 'Accept';
+    this.els.btnPairAccept.textContent = 'Accept Transfer';
     this.showView('pairing');
   },
 

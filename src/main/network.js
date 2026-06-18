@@ -265,6 +265,10 @@ class NetworkManager extends EventEmitter {
     return Array.from(this.devices.values());
   }
 
+  getDevice(deviceId) {
+    return this.devices.get(deviceId) || this.pairedDevices.get(deviceId);
+  }
+
   requestPair(deviceId) {
     const device = this.devices.get(deviceId);
     if (!device) {

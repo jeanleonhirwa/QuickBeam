@@ -50,7 +50,7 @@ function initializeServices() {
   networkManager = new NetworkManager(storage.getSettings());
 
   const TransferEngine = require('./src/main/transfer');
-  transferEngine = new TransferEngine(storage);
+  transferEngine = new TransferEngine(storage, networkManager);
 
   networkManager.on('deviceFound', (device) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -84,11 +84,7 @@ function initializeServices() {
   });
 
   networkManager.on('transferRequest', (request) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('transfer-request', request);
-    }
-    const fileCount = request.files ? request.files.length : 0;
-    sendNotification('Incoming Transfer', `${request.hostname} wants to send ${fileCount} file(s)`);
+    transferEngine.handleIncomingTransfer(request, request.socket);
   });
 
   transferEngine.on('transferProgress', (progress) => {
@@ -110,6 +106,14 @@ function initializeServices() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('transfer-failed', error);
     }
+  });
+
+  transferEngine.on('transferRequest', (request) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transfer-request', request);
+    }
+    const fileCount = request.files ? request.files.length : 0;
+    sendNotification('Incoming Transfer', `${request.hostname} wants to send ${fileCount} file(s)`);
   });
 }
 

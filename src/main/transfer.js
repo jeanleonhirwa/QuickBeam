@@ -7,13 +7,19 @@ const { NETWORK, MESSAGE_TYPES, TRANSFER_STATUS } = require('../shared/constants
 const { generateId } = require('../shared/utils');
 
 class TransferEngine extends EventEmitter {
-  constructor(storage) {
+  constructor(storage, networkManager) {
     super();
     this.storage = storage;
+    this.networkManager = networkManager;
     this.activeTransfers = new Map();
     this.pendingTransfers = new Map();
+    this.transferSockets = new Map();
     this.transferQueue = [];
     this.maxConcurrent = 3;
+  }
+
+  setNetworkManager(networkManager) {
+    this.networkManager = networkManager;
   }
 
   async startTransfer(deviceId, files) {
@@ -48,19 +54,96 @@ class TransferEngine extends EventEmitter {
       files: fileData,
       totalSize,
       bytesTransferred: 0,
-      status: TRANSFER_STATUS.PENDING,
+      status: TRANSFER_STATUS.ACTIVE,
       speed: 0,
-      startTime: null,
-      endTime: null
+      startTime: Date.now(),
+      endTime: null,
+      socket: null
     };
 
     this.activeTransfers.set(transferId, transfer);
 
-    if (this.activeTransfers.size <= this.maxConcurrent) {
-      return { success: true, transferId, queued: false };
-    } else {
-      this.transferQueue.push(transferId);
-      return { success: true, transferId, queued: true, position: this.transferQueue.length };
+    const connected = await this.connectToReceiver(transfer);
+    if (!connected) {
+      this.activeTransfers.delete(transferId);
+      return { success: false, error: 'Failed to connect to receiver' };
+    }
+
+    return { success: true, transferId, queued: false };
+  }
+
+  connectToReceiver(transfer) {
+    return new Promise((resolve) => {
+      const device = this.networkManager.getDevice(transfer.deviceId);
+      if (!device) {
+        console.error('Device not found:', transfer.deviceId);
+        resolve(false);
+        return;
+      }
+
+      const socket = net.createConnection(device.port, device.ip, () => {
+        transfer.socket = socket;
+        this.transferSockets.set(transfer.id, socket);
+
+        const initMessage = JSON.stringify({
+          type: MESSAGE_TYPES.TRANSFER_INIT,
+          transferId: transfer.id,
+          deviceId: this.networkManager.deviceId,
+          hostname: this.networkManager.hostname,
+          files: transfer.files.map(f => ({
+            name: f.name,
+            size: f.size,
+            checksum: f.checksum
+          }))
+        }) + '\n';
+
+        socket.write(initMessage);
+        console.log('Sent TRANSFER_INIT to', device.hostname);
+      });
+
+      socket.on('data', (data) => {
+        this.handleSenderSocketData(transfer, data);
+      });
+
+      socket.on('error', (err) => {
+        console.error('Connection error:', err.message);
+        transfer.status = TRANSFER_STATUS.FAILED;
+        this.emit('transferFailed', { transferId: transfer.id, error: err.message });
+        resolve(false);
+      });
+
+      socket.setTimeout(10000);
+      socket.on('timeout', () => {
+        console.error('Connection timeout');
+        socket.destroy();
+        transfer.status = TRANSFER_STATUS.FAILED;
+        this.emit('transferFailed', { transferId: transfer.id, error: 'Connection timeout' });
+        resolve(false);
+      });
+
+      setTimeout(() => {
+        if (!transfer.socket) {
+          socket.destroy();
+          resolve(false);
+        }
+      }, 10000);
+    });
+  }
+
+  handleSenderSocketData(transfer, data) {
+    const messageStr = data.toString().split('\n')[0];
+    try {
+      const message = JSON.parse(messageStr);
+      if (message.type === MESSAGE_TYPES.TRANSFER_ACCEPT) {
+        console.log('Transfer accepted, sending files...');
+        this.sendFiles(transfer);
+      } else if (message.type === MESSAGE_TYPES.TRANSFER_REJECT) {
+        console.log('Transfer rejected');
+        transfer.status = TRANSFER_STATUS.FAILED;
+        this.emit('transferFailed', { transferId: transfer.id, error: 'Transfer rejected by receiver' });
+      }
+    } catch (e) {
+      // Ignore parse errors on partial data
     }
   }
 
