@@ -177,20 +177,46 @@ Before claiming "working", these scenarios must pass:
 
 ---
 
+## WiFi Direct Support - IMPLEMENTED
+
+### New Files Created
+| File | Purpose |
+|------|---------|
+| `src/main/wifi-commands.js` | netsh command wrappers for WiFi Direct |
+| `src/main/wifi-direct.js` | WiFi Direct manager class |
+
+### Files Modified
+| File | Changes |
+|------|---------|
+| `electron.js` | Added WiFi Direct IPC handlers |
+| `preload.js` | Added WiFi API |
+| `index.html` | Added Create Room / Join Room views |
+| `app.js` | Added WiFi Direct flow |
+| `main.css` | Added styles for connection views |
+
+### New User Flow
+1. App opens to **Connection View** (Create Room / Join Room)
+2. **Host PC**: Clicks "Create Room" → Creates WiFi Direct network → Shows code
+3. **Joiner PC**: Clicks "Join Room" → Enters code → Connects to WiFi Direct
+4. Both PCs auto-discover each other → Ready to transfer!
+
+---
+
 ## Summary
 
 | Category | Status |
 |----------|--------|
-| UI/Frontend | 90% Complete |
-| Backend Logic | 90% Complete |
-| End-to-End Flow | 80% Complete |
+| UI/Frontend | 95% Complete |
+| Backend Logic | 95% Complete |
+| WiFi Direct | Implemented |
+| End-to-End Flow | 90% Complete |
 | Testing | 0% Complete |
 | Production Ready | No |
 
-**Bottom Line:** All 4 critical issues are now fixed. The transfer flow is complete:
-1. Sender connects to receiver and sends TRANSFER_INIT
-2. Receiver gets notified and shows accept/reject dialog
-3. On accept, sender sends file chunks using length-prefixed protocol
-4. Receiver writes chunks to disk with proper binary handling
+**Bottom Line:** WiFi Direct is now implemented. The app:
+1. Creates WiFi Direct network without internet
+2. Shows room code for other PC to join
+3. Auto-discovers devices on the network
+4. Supports file transfer with length-prefixed binary protocol
 
-**Next Step:** Test with 2 PCs on the same network to verify end-to-end transfer works.
+**Next Step:** Test with 2 PCs - one creates room, other joins with code.

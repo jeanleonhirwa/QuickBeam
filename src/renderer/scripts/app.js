@@ -30,8 +30,18 @@ const App = {
       btnMinimize: document.getElementById('btn-minimize'),
       btnMaximize: document.getElementById('btn-maximize'),
       btnClose: document.getElementById('btn-close'),
-      btnScan: document.getElementById('btn-scan'),
-      btnSend: document.getElementById('btn-send'),
+      btnCreateRoom: document.getElementById('btn-create-room'),
+      btnCreateRoomMain: document.getElementById('btn-create-room-main'),
+      btnJoinRoom: document.getElementById('btn-join-room'),
+      btnJoinRoomMain: document.getElementById('btn-join-room-main'),
+      btnCopyCode: document.getElementById('btn-copy-code'),
+      btnStopRoom: document.getElementById('btn-stop-room'),
+      btnJoinConnect: document.getElementById('btn-join-connect'),
+      btnBackConnect: document.getElementById('btn-back-connect'),
+      roomCode: document.getElementById('room-code'),
+      roomPassword: document.getElementById('room-password'),
+      inputRoomCode: document.getElementById('input-room-code'),
+      inputRoomPassword: document.getElementById('input-room-password'),
       btnHistory: document.getElementById('btn-history'),
       btnSettings: document.getElementById('btn-settings'),
       btnTheme: document.getElementById('btn-theme'),
@@ -47,6 +57,9 @@ const App = {
       percentValue: document.getElementById('percent-value'),
       progressRing: document.getElementById('progress-ring'),
       views: {
+        connect: document.getElementById('view-connect'),
+        host: document.getElementById('view-host'),
+        join: document.getElementById('view-join'),
         devices: document.getElementById('view-devices'),
         pairing: document.getElementById('view-pairing'),
         files: document.getElementById('view-files'),
@@ -86,8 +99,14 @@ const App = {
     this.els.btnMaximize.addEventListener('click', () => window.quickbeam.window.maximize());
     this.els.btnClose.addEventListener('click', () => window.quickbeam.window.close());
 
-    this.els.btnScan.addEventListener('click', () => this.toggleScan());
-    this.els.btnSend.addEventListener('click', () => this.showView('files'));
+    this.els.btnCreateRoom.addEventListener('click', () => this.showView('host'));
+    this.els.btnCreateRoomMain.addEventListener('click', () => this.createRoom());
+    this.els.btnJoinRoom.addEventListener('click', () => this.showView('join'));
+    this.els.btnJoinRoomMain.addEventListener('click', () => this.showView('join'));
+    this.els.btnCopyCode.addEventListener('click', () => this.copyRoomCode());
+    this.els.btnStopRoom.addEventListener('click', () => this.stopRoom());
+    this.els.btnJoinConnect.addEventListener('click', () => this.joinRoom());
+    this.els.btnBackConnect.addEventListener('click', () => this.showView('connect'));
     this.els.btnHistory.addEventListener('click', () => this.showHistory());
     this.els.btnSettings.addEventListener('click', () => this.showSettings());
 
@@ -110,7 +129,11 @@ const App = {
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
-        this.toggleScan();
+        if (this.state.wifiSupported) {
+          this.showView('connect');
+        } else {
+          this.toggleScan();
+        }
       }
       if (e.ctrlKey && e.key === 'o') {
         e.preventDefault();
@@ -131,6 +154,35 @@ const App = {
     window.quickbeam.transfer.onProgress((progress) => this.onTransferProgress(progress));
     window.quickbeam.transfer.onComplete((transfer) => this.onTransferComplete(transfer));
     window.quickbeam.transfer.onFailed((error) => this.onTransferFailed(error));
+
+    window.quickbeam.wifi.onSupported((supported) => {
+      this.state.wifiSupported = supported;
+      if (!supported) {
+        this.showView('devices');
+      }
+    });
+
+    window.quickbeam.wifi.onNetworkReady((info) => {
+      this.state.wifiInfo = info;
+      this.state.isHosting = true;
+      if (this.els.roomCode) this.els.roomCode.textContent = info.ssid;
+      if (this.els.roomPassword) this.els.roomPassword.textContent = info.password;
+      this.showView('host');
+      this.toggleScan();
+    });
+
+    window.quickbeam.wifi.onConnected((info) => {
+      this.state.wifiInfo = info;
+      this.state.isJoining = true;
+      this.els.pageSubtitle.textContent = 'Connected to room!';
+      this.toggleScan();
+    });
+
+    window.quickbeam.wifi.onDisconnected(() => {
+      this.state.isHosting = false;
+      this.state.isJoining = false;
+      this.state.wifiInfo = null;
+    });
   },
 
   initDragDrop() {
@@ -173,6 +225,74 @@ const App = {
     this.els.settingDownloadPath.value = settings.downloadPath || '';
     this.els.settingPort.value = settings.port || 58586;
     this.els.settingAutoAccept.checked = settings.autoAccept || false;
+
+    const supported = await window.quickbeam.wifi.supported();
+    this.state.wifiSupported = supported;
+    if (supported) {
+      this.showView('connect');
+    } else {
+      this.showView('devices');
+      this.toggleScan();
+    }
+  },
+
+  async createRoom() {
+    this.els.pageSubtitle.textContent = 'Creating room...';
+    const result = await window.quickbeam.wifi.host();
+    if (result.success) {
+      this.state.wifiInfo = result.info;
+      this.state.isHosting = true;
+      if (this.els.roomCode) this.els.roomCode.textContent = result.info.ssid;
+      if (this.els.roomPassword) this.els.roomPassword.textContent = result.info.password;
+      this.showView('host');
+      this.toggleScan();
+    } else {
+      this.els.pageSubtitle.textContent = 'Failed to create room: ' + result.error;
+    }
+  },
+
+  copyRoomCode() {
+    if (this.state.wifiInfo) {
+      const text = `Room: ${this.state.wifiInfo.ssid}\nPassword: ${this.state.wifiInfo.password}`;
+      navigator.clipboard.writeText(text).then(() => {
+        this.els.btnCopyCode.textContent = 'Copied!';
+        setTimeout(() => {
+          this.els.btnCopyCode.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Code';
+        }, 2000);
+      }).catch(() => {
+        this.els.btnCopyCode.textContent = 'Failed to copy';
+      });
+    }
+  },
+
+  async stopRoom() {
+    await window.quickbeam.wifi.stop();
+    this.state.isHosting = false;
+    this.state.wifiInfo = null;
+    this.showView('connect');
+  },
+
+  async joinRoom() {
+    const code = this.els.inputRoomCode.value.trim();
+    const password = this.els.inputRoomPassword.value.trim();
+
+    if (!code || !password) {
+      this.els.pageSubtitle.textContent = 'Please enter room code and password';
+      return;
+    }
+
+    this.els.pageSubtitle.textContent = 'Connecting to room...';
+    const result = await window.quickbeam.wifi.join(code, password);
+
+    if (result.success) {
+      this.state.wifiInfo = result.info;
+      this.state.isJoining = true;
+      this.els.pageSubtitle.textContent = 'Connected! Scanning for devices...';
+      this.showView('devices');
+      this.toggleScan();
+    } else {
+      this.els.pageSubtitle.textContent = 'Failed to connect: ' + result.error;
+    }
   },
 
   showView(viewName) {
@@ -182,6 +302,9 @@ const App = {
     this.els.views[viewName].classList.remove('hidden');
 
     const titles = {
+      connect: 'QuickBeam',
+      host: 'Room Created',
+      join: 'Join Room',
       devices: 'Devices',
       pairing: 'Pairing Request',
       files: 'Send Files',
@@ -191,7 +314,10 @@ const App = {
     };
 
     const subtitles = {
-      devices: this.state.isScanning ? 'Scanning for nearby devices...' : 'Click "Scan Devices" to find nearby QuickBeam users',
+      connect: 'No internet or router needed',
+      host: 'Share this code with the other PC',
+      join: 'Enter the code from the other PC',
+      devices: this.state.isScanning ? 'Scanning for nearby devices...' : 'Waiting for devices...',
       pairing: this.state.pairingSubtitle?.textContent || 'Connection request received',
       files: 'Select files to send',
       transfer: 'Transferring files...',
@@ -204,8 +330,8 @@ const App = {
 
     document.querySelectorAll('.action-btn').forEach(btn => btn.classList.remove('active'));
     const activeBtn = {
-      devices: this.els.btnScan,
-      files: this.els.btnSend,
+      'btn-create-room': this.els.btnCreateRoom,
+      'btn-join-room': this.els.btnJoinRoom,
       history: this.els.btnHistory,
       settings: this.els.btnSettings
     }[viewName];
@@ -216,23 +342,13 @@ const App = {
     if (this.state.isScanning) {
       await window.quickbeam.devices.stopScan();
       this.state.isScanning = false;
-      this.els.btnScan.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-        </svg>
-        Scan Devices
-      `;
     } else {
       await window.quickbeam.devices.startScan();
       this.state.isScanning = true;
-      this.els.btnScan.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="6" y="6" width="12" height="12"/>
-        </svg>
-        Stop Scan
-      `;
     }
-    this.showView('devices');
+    if (this.state.currentView === 'devices') {
+      this.showView('devices');
+    }
   },
 
   onDeviceFound(device) {
@@ -240,6 +356,9 @@ const App = {
       this.state.devices.push(device);
       this.renderDeviceList();
       this.updateStats();
+      if (this.state.currentView === 'devices' || this.state.currentView === 'host') {
+        this.showView('devices');
+      }
     }
   },
 
