@@ -1,8 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
-const NetworkManager = require('./src/main/network');
-const TransferEngine = require('./src/main/transfer');
-const Storage = require('./src/main/storage');
 
 let mainWindow;
 let networkManager;
@@ -38,102 +35,181 @@ function createWindow() {
 }
 
 function initializeServices() {
+  const Storage = require('./src/main/storage');
   storage = new Storage();
+
+  const NetworkManager = require('./src/main/network');
   networkManager = new NetworkManager(storage.getSettings());
+
+  const TransferEngine = require('./src/main/transfer');
   transferEngine = new TransferEngine(storage);
 
   networkManager.on('deviceFound', (device) => {
-    mainWindow?.webContents.send('device-found', device);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('device-found', device);
+    }
   });
 
   networkManager.on('deviceLost', (deviceId) => {
-    mainWindow?.webContents.send('device-lost', deviceId);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('device-lost', deviceId);
+    }
   });
 
   networkManager.on('pairRequest', (request) => {
-    mainWindow?.webContents.send('pair-request', request);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pair-request', request);
+    }
   });
 
   networkManager.on('pairAccepted', (device) => {
-    mainWindow?.webContents.send('pair-accepted', device);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pair-accepted', device);
+    }
   });
 
   networkManager.on('pairRejected', (deviceId) => {
-    mainWindow?.webContents.send('pair-rejected', deviceId);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pair-rejected', deviceId);
+    }
   });
 
   networkManager.on('transferRequest', (request) => {
-    mainWindow?.webContents.send('transfer-request', request);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transfer-request', request);
+    }
   });
 
   transferEngine.on('transferProgress', (progress) => {
-    mainWindow?.webContents.send('transfer-progress', progress);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transfer-progress', progress);
+    }
   });
 
   transferEngine.on('transferComplete', (transfer) => {
-    mainWindow?.webContents.send('transfer-complete', transfer);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transfer-complete', transfer);
+    }
     storage.addTransferHistory(transfer);
   });
 
   transferEngine.on('transferFailed', (error) => {
-    mainWindow?.webContents.send('transfer-failed', error);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('transfer-failed', error);
+    }
   });
 }
 
 function setupIPC() {
-  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
-  ipcMain.handle('window: maximize', () => {
-    if (mainWindow?.isMaximized()) {
-      mainWindow.unmaximize();
-    } else {
-      mainWindow?.maximize();
+  ipcMain.handle('window:minimize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.minimize();
     }
   });
-  ipcMain.handle('window:close', () => mainWindow?.close());
 
-  ipcMain.handle('settings:get', () => storage.getSettings());
-  ipcMain.handle('settings:set', (event, settings) => {
-    storage.updateSettings(settings);
-    networkManager.updateSettings(storage.getSettings());
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
   });
 
-  ipcMain.handle('devices:startScan', () => networkManager.startDiscovery());
-  ipcMain.handle('devices:stopScan', () => networkManager.stopDiscovery());
-  ipcMain.handle('devices:getList', () => networkManager.getDevices());
+  ipcMain.handle('window:close', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close();
+    }
+  });
 
-  ipcMain.handle('pair:request', (event, deviceId) => networkManager.requestPair(deviceId));
-  ipcMain.handle('pair:accept', (event, requestId) => networkManager.acceptPair(requestId));
-  ipcMain.handle('pair:reject', (event, requestId) => networkManager.rejectPair(requestId));
+  ipcMain.handle('settings:get', () => {
+    return storage ? storage.getSettings() : {};
+  });
+
+  ipcMain.handle('settings:set', (event, settings) => {
+    if (storage && networkManager) {
+      storage.updateSettings(settings);
+      networkManager.updateSettings(storage.getSettings());
+    }
+  });
+
+  ipcMain.handle('devices:startScan', () => {
+    if (networkManager) {
+      networkManager.startDiscovery();
+    }
+  });
+
+  ipcMain.handle('devices:stopScan', () => {
+    if (networkManager) {
+      networkManager.stopDiscovery();
+    }
+  });
+
+  ipcMain.handle('devices:getList', () => {
+    return networkManager ? networkManager.getDevices() : [];
+  });
+
+  ipcMain.handle('pair:request', (event, deviceId) => {
+    return networkManager ? networkManager.requestPair(deviceId) : { success: false };
+  });
+
+  ipcMain.handle('pair:accept', (event, requestId) => {
+    return networkManager ? networkManager.acceptPair(requestId) : { success: false };
+  });
+
+  ipcMain.handle('pair:reject', (event, requestId) => {
+    return networkManager ? networkManager.rejectPair(requestId) : { success: false };
+  });
 
   ipcMain.handle('transfer:send', async (event, { deviceId, files }) => {
-    return transferEngine.startTransfer(deviceId, files);
+    return transferEngine ? transferEngine.startTransfer(deviceId, files) : { success: false };
   });
-  ipcMain.handle('transfer:accept', (event, transferId) => transferEngine.acceptTransfer(transferId));
-  ipcMain.handle('transfer:reject', (event, transferId) => transferEngine.rejectTransfer(transferId));
-  ipcMain.handle('transfer:cancel', (event, transferId) => transferEngine.cancelTransfer(transferId));
 
-  ipcMain.handle('history:get', () => storage.getTransferHistory());
-  ipcMain.handle('history:clear', () => storage.clearTransferHistory());
+  ipcMain.handle('transfer:accept', (event, transferId) => {
+    return transferEngine ? transferEngine.acceptTransfer(transferId) : { success: false };
+  });
+
+  ipcMain.handle('transfer:reject', (event, transferId) => {
+    return transferEngine ? transferEngine.rejectTransfer(transferId) : { success: false };
+  });
+
+  ipcMain.handle('transfer:cancel', (event, transferId) => {
+    return transferEngine ? transferEngine.cancelTransfer(transferId) : { success: false };
+  });
+
+  ipcMain.handle('history:get', () => {
+    return storage ? storage.getTransferHistory() : [];
+  });
+
+  ipcMain.handle('history:clear', () => {
+    if (storage) {
+      storage.clearTransferHistory();
+    }
+  });
 
   ipcMain.handle('dialog:openFiles', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return [];
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile', 'multiSelections']
     });
-    return result.filePaths;
+    return result.canceled ? [] : result.filePaths;
   });
 
   ipcMain.handle('dialog:openFolder', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return null;
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory']
     });
-    return result.filePaths[0];
+    return result.canceled ? null : result.filePaths[0];
   });
 
   ipcMain.handle('dialog:selectFolder', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return null;
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory']
     });
-    return result.filePaths[0];
+    return result.canceled ? null : result.filePaths[0];
   });
 }
 
@@ -141,7 +217,12 @@ app.whenReady().then(() => {
   createWindow();
   initializeServices();
   setupIPC();
-  networkManager.start();
+
+  try {
+    networkManager.start();
+  } catch (err) {
+    console.error('Network manager start error:', err);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -151,12 +232,20 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  networkManager?.stop();
+  if (networkManager) {
+    try { networkManager.stop(); } catch (e) {}
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
 app.on('before-quit', () => {
-  networkManager?.stop();
+  if (networkManager) {
+    try { networkManager.stop(); } catch (e) {}
+  }
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
 });

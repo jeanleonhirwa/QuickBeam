@@ -2,8 +2,9 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
+const crypto = require('crypto');
 const { NETWORK, MESSAGE_TYPES, TRANSFER_STATUS } = require('../shared/constants');
-const { generateId, calculateChecksum } = require('../shared/utils');
+const { generateId } = require('../shared/utils');
 
 class TransferEngine extends EventEmitter {
   constructor(storage) {
@@ -11,22 +12,30 @@ class TransferEngine extends EventEmitter {
     this.storage = storage;
     this.activeTransfers = new Map();
     this.pendingTransfers = new Map();
-    this.serverSocket = null;
   }
 
   async startTransfer(deviceId, files) {
     const transferId = generateId();
-    
-    const fileData = await Promise.all(files.map(async (filePath) => {
-      const stats = fs.statSync(filePath);
-      const checksum = await calculateChecksum(filePath);
-      return {
-        name: path.basename(filePath),
-        path: filePath,
-        size: stats.size,
-        checksum
-      };
-    }));
+
+    const fileData = [];
+    for (const filePath of files) {
+      try {
+        const stats = fs.statSync(filePath);
+        const checksum = await this.calculateChecksum(filePath);
+        fileData.push({
+          name: path.basename(filePath),
+          path: filePath,
+          size: stats.size,
+          checksum
+        });
+      } catch (err) {
+        console.error('File error:', filePath, err.message);
+      }
+    }
+
+    if (fileData.length === 0) {
+      return { success: false, error: 'No valid files' };
+    }
 
     const totalSize = fileData.reduce((sum, f) => sum + f.size, 0);
 
@@ -47,15 +56,25 @@ class TransferEngine extends EventEmitter {
     return { success: true, transferId };
   }
 
+  calculateChecksum(filePath) {
+    return new Promise((resolve, reject) => {
+      const hash = crypto.createHash('sha256');
+      const stream = fs.createReadStream(filePath);
+      stream.on('data', data => hash.update(data));
+      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('error', reject);
+    });
+  }
+
   async handleIncomingTransfer(message, socket) {
-    const transferId = message.transferId;
-    
+    const transferId = message.transferId || generateId();
+
     const transfer = {
       id: transferId,
       deviceId: message.deviceId,
       type: 'receive',
-      files: message.files,
-      totalSize: message.files.reduce((sum, f) => sum + f.size, 0),
+      files: message.files || [],
+      totalSize: (message.files || []).reduce((sum, f) => sum + (f.size || 0), 0),
       bytesTransferred: 0,
       status: TRANSFER_STATUS.PENDING,
       speed: 0,
@@ -83,15 +102,19 @@ class TransferEngine extends EventEmitter {
 
     this.pendingTransfers.delete(transferId);
     this.activeTransfers.set(transferId, transfer);
-    
+
     transfer.status = TRANSFER_STATUS.ACTIVE;
     transfer.startTime = Date.now();
 
-    const acceptMessage = JSON.stringify({
-      type: MESSAGE_TYPES.TRANSFER_ACCEPT,
-      transferId
-    }) + '\n';
-    transfer.socket.write(acceptMessage);
+    try {
+      const acceptMessage = JSON.stringify({
+        type: MESSAGE_TYPES.TRANSFER_ACCEPT,
+        transferId
+      }) + '\n';
+      transfer.socket.write(acceptMessage);
+    } catch (err) {
+      console.error('Accept message error:', err);
+    }
 
     this.receiveFile(transfer);
     return { success: true };
@@ -103,11 +126,15 @@ class TransferEngine extends EventEmitter {
       return { success: false, error: 'Transfer not found' };
     }
 
-    const rejectMessage = JSON.stringify({
-      type: MESSAGE_TYPES.TRANSFER_REJECT,
-      transferId
-    }) + '\n';
-    transfer.socket.write(rejectMessage);
+    try {
+      const rejectMessage = JSON.stringify({
+        type: MESSAGE_TYPES.TRANSFER_REJECT,
+        transferId
+      }) + '\n';
+      transfer.socket.write(rejectMessage);
+    } catch (err) {
+      console.error('Reject message error:', err);
+    }
 
     this.pendingTransfers.delete(transferId);
     return { success: true };
@@ -122,12 +149,16 @@ class TransferEngine extends EventEmitter {
     transfer.status = TRANSFER_STATUS.CANCELLED;
     transfer.endTime = Date.now();
 
-    if (transfer.socket && !transfer.socket.destroyed) {
-      const cancelMessage = JSON.stringify({
-        type: MESSAGE_TYPES.TRANSFER_CANCEL,
-        transferId
-      }) + '\n';
-      transfer.socket.write(cancelMessage);
+    try {
+      if (transfer.socket && !transfer.socket.destroyed) {
+        const cancelMessage = JSON.stringify({
+          type: MESSAGE_TYPES.TRANSFER_CANCEL,
+          transferId
+        }) + '\n';
+        transfer.socket.write(cancelMessage);
+      }
+    } catch (err) {
+      console.error('Cancel message error:', err);
     }
 
     this.activeTransfers.delete(transferId);
@@ -137,16 +168,46 @@ class TransferEngine extends EventEmitter {
 
   async sendFiles(transfer) {
     const settings = this.storage.getSettings();
-    const downloadPath = settings.downloadPath;
 
     for (const file of transfer.files) {
+      try {
+        await this.sendFileChunk(transfer, file);
+      } catch (err) {
+        console.error('Send file error:', err);
+        transfer.status = TRANSFER_STATUS.FAILED;
+        transfer.endTime = Date.now();
+        this.activeTransfers.delete(transfer.id);
+        this.emit('transferFailed', { transferId: transfer.id, error: err.message });
+        return;
+      }
+    }
+
+    try {
+      const completeMessage = JSON.stringify({
+        type: MESSAGE_TYPES.TRANSFER_COMPLETE,
+        transferId: transfer.id,
+        checksums: transfer.files.map(f => ({ name: f.name, checksum: f.checksum }))
+      }) + '\n';
+      transfer.socket.write(completeMessage);
+    } catch (err) {
+      console.error('Complete message error:', err);
+    }
+
+    transfer.status = TRANSFER_STATUS.COMPLETED;
+    transfer.endTime = Date.now();
+    this.activeTransfers.delete(transfer.id);
+    this.emit('transferComplete', transfer);
+  }
+
+  sendFileChunk(transfer, file) {
+    return new Promise((resolve, reject) => {
       const fileStream = fs.createReadStream(file.path);
       const fileSize = file.size;
       let bytesSent = 0;
       let lastEmit = Date.now();
 
-      await new Promise((resolve, reject) => {
-        fileStream.on('data', (chunk) => {
+      fileStream.on('data', (chunk) => {
+        try {
           const initData = JSON.stringify({
             type: MESSAGE_TYPES.FILE_DATA,
             transferId: transfer.id,
@@ -163,7 +224,7 @@ class TransferEngine extends EventEmitter {
           const now = Date.now();
           if (now - lastEmit > 100) {
             const elapsed = (now - transfer.startTime) / 1000;
-            transfer.speed = transfer.bytesTransferred / elapsed;
+            transfer.speed = elapsed > 0 ? transfer.bytesTransferred / elapsed : 0;
             this.emit('transferProgress', {
               transferId: transfer.id,
               bytesTransferred: transfer.bytesTransferred,
@@ -173,45 +234,39 @@ class TransferEngine extends EventEmitter {
             });
             lastEmit = now;
           }
-        });
-
-        fileStream.on('end', resolve);
-        fileStream.on('error', reject);
+        } catch (err) {
+          fileStream.destroy();
+          reject(err);
+        }
       });
-    }
 
-    const completeMessage = JSON.stringify({
-      type: MESSAGE_TYPES.TRANSFER_COMPLETE,
-      transferId: transfer.id,
-      checksums: transfer.files.map(f => ({ name: f.name, checksum: f.checksum }))
-    }) + '\n';
-    transfer.socket.write(completeMessage);
-
-    transfer.status = TRANSFER_STATUS.COMPLETED;
-    transfer.endTime = Date.now();
-    this.activeTransfers.delete(transfer.id);
-    this.emit('transferComplete', transfer);
+      fileStream.on('end', resolve);
+      fileStream.on('error', reject);
+    });
   }
 
   async receiveFile(transfer) {
     const settings = this.storage.getSettings();
     const downloadPath = settings.downloadPath;
 
-    if (!fs.existsSync(downloadPath)) {
-      fs.mkdirSync(downloadPath, { recursive: true });
+    try {
+      if (!fs.existsSync(downloadPath)) {
+        fs.mkdirSync(downloadPath, { recursive: true });
+      }
+    } catch (err) {
+      console.error('Create download dir error:', err);
     }
 
     let buffer = '';
     let currentFile = null;
     let fileStream = null;
-    let receivedBytes = 0;
 
     transfer.socket.on('data', async (data) => {
       buffer += data.toString();
 
       while (buffer.length > 0) {
         const newlineIndex = buffer.indexOf('\n');
-        
+
         if (newlineIndex === -1) break;
 
         const messageStr = buffer.substring(0, newlineIndex);
@@ -222,24 +277,24 @@ class TransferEngine extends EventEmitter {
 
           if (message.type === MESSAGE_TYPES.FILE_DATA) {
             if (!fileStream || currentFile !== message.fileName) {
-              if (fileStream) fileStream.end();
+              if (fileStream) {
+                fileStream.end();
+              }
               currentFile = message.fileName;
               const filePath = path.join(downloadPath, message.fileName);
               fileStream = fs.createWriteStream(filePath);
-              receivedBytes = 0;
             }
 
             const chunkData = buffer.substring(0, message.size);
             buffer = buffer.substring(message.size);
-            
+
             fileStream.write(Buffer.from(chunkData, 'binary'));
-            receivedBytes += chunkData.length;
             transfer.bytesTransferred += chunkData.length;
 
             const now = Date.now();
             const elapsed = (now - transfer.startTime) / 1000;
-            transfer.speed = transfer.bytesTransferred / elapsed;
-            
+            transfer.speed = elapsed > 0 ? transfer.bytesTransferred / elapsed : 0;
+
             this.emit('transferProgress', {
               transferId: transfer.id,
               bytesTransferred: transfer.bytesTransferred,
@@ -270,13 +325,13 @@ class TransferEngine extends EventEmitter {
             this.emit('transferFailed', { transferId: transfer.id, error: 'Cancelled by sender' });
           }
         } catch (e) {
-          console.error('Message parse error:', e);
+          // Skip invalid messages
         }
       }
     });
 
     transfer.socket.on('error', (err) => {
-      console.error('Transfer socket error:', err);
+      console.error('Transfer socket error:', err.message);
       transfer.status = TRANSFER_STATUS.FAILED;
       transfer.endTime = Date.now();
       this.emit('transferFailed', { transferId: transfer.id, error: err.message });

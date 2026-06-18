@@ -17,24 +17,42 @@ class NetworkManager extends EventEmitter {
     this.broadcastTimer = null;
     this.localIP = getLocalIP();
     this.hostname = getHostname();
+    this.started = false;
   }
 
   start() {
-    this.startBroadcastListener();
-    this.startServer();
+    if (this.started) return;
+    this.started = true;
+
+    try {
+      this.startBroadcastListener();
+    } catch (err) {
+      console.error('Broadcast listener error:', err);
+    }
+
+    try {
+      this.startServer();
+    } catch (err) {
+      console.error('Server error:', err);
+    }
+
     this.startDiscovery();
   }
 
   stop() {
     this.stopDiscovery();
+
     if (this.broadcastSocket) {
-      this.broadcastSocket.close();
+      try { this.broadcastSocket.close(); } catch (e) {}
       this.broadcastSocket = null;
     }
+
     if (this.serverSocket) {
-      this.serverSocket.close();
+      try { this.serverSocket.close(); } catch (e) {}
       this.serverSocket = null;
     }
+
+    this.started = false;
   }
 
   updateSettings(settings) {
@@ -42,8 +60,8 @@ class NetworkManager extends EventEmitter {
   }
 
   startBroadcastListener() {
-    this.broadcastSocket = dgram.createSocket('udp4');
-    
+    this.broadcastSocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+
     this.broadcastSocket.on('message', (msg, rinfo) => {
       try {
         const data = JSON.parse(msg.toString());
@@ -56,11 +74,13 @@ class NetworkManager extends EventEmitter {
     });
 
     this.broadcastSocket.on('error', (err) => {
-      console.error('Broadcast socket error:', err);
+      console.error('Broadcast socket error:', err.message);
     });
 
     this.broadcastSocket.bind(NETWORK.DISCOVERY_PORT, () => {
-      this.broadcastSocket.setBroadcast(true);
+      try {
+        this.broadcastSocket.setBroadcast(true);
+      } catch (e) {}
     });
   }
 
@@ -91,37 +111,43 @@ class NetworkManager extends EventEmitter {
     });
 
     this.serverSocket.on('error', (err) => {
-      console.error('Server error:', err);
+      if (err.code === 'EADDRINUSE') {
+        console.error('Port', this.settings.port, 'in use, trying next port');
+        this.settings.port++;
+        this.serverSocket.listen(this.settings.port);
+      } else {
+        console.error('Server error:', err.message);
+      }
     });
 
     this.serverSocket.listen(this.settings.port, () => {
-      console.log(`Server listening on port ${this.settings.port}`);
+      console.log('Server listening on port', this.settings.port);
     });
   }
 
   handleConnection(socket) {
     let buffer = '';
-    
+
     socket.on('data', (data) => {
       buffer += data.toString();
-      
-      const messages = buffer.split('\n');
-      buffer = messages.pop();
-      
-      for (const msg of messages) {
-        if (msg.trim()) {
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.trim()) {
           try {
-            const message = JSON.parse(msg);
+            const message = JSON.parse(line);
             this.handleMessage(message, socket);
           } catch (e) {
-            console.error('Invalid message:', e);
+            console.error('Invalid message:', e.message);
           }
         }
       }
     });
 
     socket.on('error', (err) => {
-      console.error('Connection error:', err);
+      console.error('Connection error:', err.message);
     });
   }
 
@@ -131,10 +157,13 @@ class NetworkManager extends EventEmitter {
         this.handlePairRequest(message, socket);
         break;
       case MESSAGE_TYPES.PAIR_ACCEPT:
-        this.handlePairAccept(message, socket);
+        this.handlePairAccept(message);
         break;
       case MESSAGE_TYPES.PAIR_REJECT:
-        this.handlePairReject(message, socket);
+        this.handlePairReject(message);
+        break;
+      case MESSAGE_TYPES.TRANSFER_INIT:
+        this.emit('transferRequest', { ...message, socket });
         break;
       default:
         this.emit('message', message, socket);
@@ -142,7 +171,7 @@ class NetworkManager extends EventEmitter {
   }
 
   handlePairRequest(message, socket) {
-    const requestId = generateId();
+    const requestId = message.requestId || generateId();
     const request = {
       id: requestId,
       deviceId: message.deviceId,
@@ -150,12 +179,12 @@ class NetworkManager extends EventEmitter {
       ip: message.ip,
       socket
     };
-    
+
     this.pendingPairs.set(requestId, request);
     this.emit('pairRequest', request);
   }
 
-  handlePairAccept(message, socket) {
+  handlePairAccept(message) {
     const pending = this.pendingPairs.get(message.requestId);
     if (pending) {
       this.pairedDevices.set(pending.deviceId, {
@@ -167,7 +196,7 @@ class NetworkManager extends EventEmitter {
     }
   }
 
-  handlePairReject(message, socket) {
+  handlePairReject(message) {
     const pending = this.pendingPairs.get(message.requestId);
     if (pending) {
       this.pendingPairs.delete(message.requestId);
@@ -206,7 +235,11 @@ class NetworkManager extends EventEmitter {
     });
 
     const buffer = Buffer.from(message);
-    this.broadcastSocket.send(buffer, 0, buffer.length, NETWORK.DISCOVERY_PORT, NETWORK.BROADCAST_ADDRESS);
+    try {
+      this.broadcastSocket.send(buffer, 0, buffer.length, NETWORK.DISCOVERY_PORT, NETWORK.BROADCAST_ADDRESS);
+    } catch (e) {
+      // Ignore broadcast errors
+    }
   }
 
   cleanupStaleDevices() {
@@ -232,31 +265,36 @@ class NetworkManager extends EventEmitter {
     }
 
     const requestId = generateId();
-    const socket = net.createConnection(device.port, device.ip, () => {
-      const message = JSON.stringify({
-        type: MESSAGE_TYPES.PAIR_REQUEST,
-        requestId,
-        deviceId: this.deviceId,
-        hostname: this.hostname,
-        ip: this.localIP
-      }) + '\n';
-      
-      socket.write(message);
-      
-      this.pendingPairs.set(requestId, {
-        id: requestId,
-        deviceId,
-        device,
-        socket
+
+    try {
+      const socket = net.createConnection(device.port, device.ip, () => {
+        const message = JSON.stringify({
+          type: MESSAGE_TYPES.PAIR_REQUEST,
+          requestId,
+          deviceId: this.deviceId,
+          hostname: this.hostname,
+          ip: this.localIP
+        }) + '\n';
+
+        socket.write(message);
+
+        this.pendingPairs.set(requestId, {
+          id: requestId,
+          deviceId,
+          device,
+          socket
+        });
       });
-    });
 
-    socket.on('error', (err) => {
-      console.error('Pair request error:', err);
-      this.pendingPairs.delete(requestId);
-    });
+      socket.on('error', (err) => {
+        console.error('Pair request error:', err.message);
+        this.pendingPairs.delete(requestId);
+      });
 
-    return { success: true, requestId };
+      return { success: true, requestId };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }
 
   acceptPair(requestId) {
@@ -265,22 +303,26 @@ class NetworkManager extends EventEmitter {
       return { success: false, error: 'Request not found' };
     }
 
-    const message = JSON.stringify({
-      type: MESSAGE_TYPES.PAIR_ACCEPT,
-      requestId,
-      deviceId: this.deviceId,
-      hostname: this.hostname
-    }) + '\n';
+    try {
+      const message = JSON.stringify({
+        type: MESSAGE_TYPES.PAIR_ACCEPT,
+        requestId,
+        deviceId: this.deviceId,
+        hostname: this.hostname
+      }) + '\n';
 
-    request.socket.write(message);
-    
-    this.pairedDevices.set(request.deviceId, {
-      ...request,
-      pairedAt: Date.now()
-    });
-    this.pendingPairs.delete(requestId);
-    
-    return { success: true };
+      request.socket.write(message);
+
+      this.pairedDevices.set(request.deviceId, {
+        ...request,
+        pairedAt: Date.now()
+      });
+      this.pendingPairs.delete(requestId);
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }
 
   rejectPair(requestId) {
@@ -289,16 +331,20 @@ class NetworkManager extends EventEmitter {
       return { success: false, error: 'Request not found' };
     }
 
-    const message = JSON.stringify({
-      type: MESSAGE_TYPES.PAIR_REJECT,
-      requestId,
-      deviceId: this.deviceId
-    }) + '\n';
+    try {
+      const message = JSON.stringify({
+        type: MESSAGE_TYPES.PAIR_REJECT,
+        requestId,
+        deviceId: this.deviceId
+      }) + '\n';
 
-    request.socket.write(message);
-    this.pendingPairs.delete(requestId);
-    
-    return { success: true };
+      request.socket.write(message);
+      this.pendingPairs.delete(requestId);
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }
 
   getConnection(deviceId) {
