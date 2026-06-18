@@ -5,6 +5,7 @@ let mainWindow;
 let networkManager;
 let transferEngine;
 let storage;
+let wifiDirect;
 
 function sendNotification(title, body) {
   if (Notification.isSupported()) {
