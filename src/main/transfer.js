@@ -12,6 +12,8 @@ class TransferEngine extends EventEmitter {
     this.storage = storage;
     this.activeTransfers = new Map();
     this.pendingTransfers = new Map();
+    this.transferQueue = [];
+    this.maxConcurrent = 3;
   }
 
   async startTransfer(deviceId, files) {
@@ -53,7 +55,51 @@ class TransferEngine extends EventEmitter {
     };
 
     this.activeTransfers.set(transferId, transfer);
-    return { success: true, transferId };
+
+    if (this.activeTransfers.size <= this.maxConcurrent) {
+      return { success: true, transferId, queued: false };
+    } else {
+      this.transferQueue.push(transferId);
+      return { success: true, transferId, queued: true, position: this.transferQueue.length };
+    }
+  }
+
+  getQueue() {
+    return this.transferQueue.map((id, index) => ({
+      id,
+      position: index + 1,
+      transfer: this.activeTransfers.get(id)
+    }));
+  }
+
+  retryTransfer(transferId) {
+    const transfer = this.activeTransfers.get(transferId);
+    if (!transfer) {
+      return { success: false, error: 'Transfer not found' };
+    }
+
+    if (transfer.status === TRANSFER_STATUS.FAILED || transfer.status === TRANSFER_STATUS.CANCELLED) {
+      transfer.status = TRANSFER_STATUS.PENDING;
+      transfer.bytesTransferred = 0;
+      transfer.speed = 0;
+      transfer.startTime = null;
+      transfer.endTime = null;
+      this.activeTransfers.set(transferId, transfer);
+      return { success: true };
+    }
+    return { success: false, error: 'Transfer cannot be retried' };
+  }
+
+  processQueue() {
+    while (this.transferQueue.length > 0 && this.activeTransfers.size < this.maxConcurrent) {
+      const nextId = this.transferQueue.shift();
+      const transfer = this.activeTransfers.get(nextId);
+      if (transfer && transfer.status === TRANSFER_STATUS.PENDING) {
+        transfer.status = TRANSFER_STATUS.ACTIVE;
+        transfer.startTime = Date.now();
+        this.sendFiles(transfer);
+      }
+    }
   }
 
   calculateChecksum(filePath) {

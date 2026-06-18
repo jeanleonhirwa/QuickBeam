@@ -34,10 +34,20 @@ contextBridge.exposeInMainWorld('quickbeam', {
     accept: (transferId) => ipcRenderer.invoke('transfer:accept', transferId),
     reject: (transferId) => ipcRenderer.invoke('transfer:reject', transferId),
     cancel: (transferId) => ipcRenderer.invoke('transfer:cancel', transferId),
+    getQueue: () => ipcRenderer.invoke('transfer:getQueue'),
+    retry: (transferId) => ipcRenderer.invoke('transfer:retry', transferId),
     onRequest: (callback) => ipcRenderer.on('transfer-request', (event, request) => callback(request)),
     onProgress: (callback) => ipcRenderer.on('transfer-progress', (event, progress) => callback(progress)),
     onComplete: (callback) => ipcRenderer.on('transfer-complete', (event, transfer) => callback(transfer)),
     onFailed: (callback) => ipcRenderer.on('transfer-failed', (event, error) => callback(error))
+  },
+
+  connection: {
+    quality: (deviceId) => ipcRenderer.invoke('connection:quality', deviceId)
+  },
+
+  files: {
+    drop: (filePaths) => ipcRenderer.invoke('files:drop', filePaths)
   },
 
   history: {

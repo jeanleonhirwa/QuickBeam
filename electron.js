@@ -1,10 +1,16 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Notification } = require('electron');
 const path = require('path');
 
 let mainWindow;
 let networkManager;
 let transferEngine;
 let storage;
+
+function sendNotification(title, body) {
+  if (Notification.isSupported()) {
+    new Notification({ title, body }).show();
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -24,6 +30,8 @@ function createWindow() {
   });
 
   mainWindow.loadFile('src/renderer/index.html');
+
+  mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
 
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
@@ -60,6 +68,7 @@ function initializeServices() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('pair-request', request);
     }
+    sendNotification('Pairing Request', `${request.hostname} wants to connect`);
   });
 
   networkManager.on('pairAccepted', (device) => {
@@ -78,6 +87,8 @@ function initializeServices() {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('transfer-request', request);
     }
+    const fileCount = request.files ? request.files.length : 0;
+    sendNotification('Incoming Transfer', `${request.hostname} wants to send ${fileCount} file(s)`);
   });
 
   transferEngine.on('transferProgress', (progress) => {
@@ -91,6 +102,8 @@ function initializeServices() {
       mainWindow.webContents.send('transfer-complete', transfer);
     }
     storage.addTransferHistory(transfer);
+    const fileCount = transfer.files.length;
+    sendNotification('Transfer Complete', `${fileCount} file(s) transferred successfully`);
   });
 
   transferEngine.on('transferFailed', (error) => {
@@ -210,6 +223,22 @@ function setupIPC() {
       properties: ['openDirectory']
     });
     return result.canceled ? null : result.filePaths[0];
+  });
+
+  ipcMain.handle('transfer:getQueue', () => {
+    return transferEngine ? transferEngine.getQueue() : [];
+  });
+
+  ipcMain.handle('transfer:retry', (event, transferId) => {
+    return transferEngine ? transferEngine.retryTransfer(transferId) : { success: false };
+  });
+
+  ipcMain.handle('connection:quality', (event, deviceId) => {
+    return networkManager ? networkManager.getConnectionQuality(deviceId) : { quality: 0 };
+  });
+
+  ipcMain.handle('files:drop', (event, filePaths) => {
+    return filePaths || [];
   });
 }
 
