@@ -13,6 +13,7 @@ const App = {
     isHosting: false,
     isJoining: false,
     wifiSupported: false,
+    passwordVisible: false,
     wifiInfo: null,
     transferQueue: []
   },
@@ -35,6 +36,7 @@ const App = {
       btnJoinRoom: document.getElementById('btn-join-room'),
       btnJoinRoomMain: document.getElementById('btn-join-room-main'),
       btnCopyCode: document.getElementById('btn-copy-code'),
+      btnTogglePassword: document.getElementById('btn-toggle-password'),
       btnStopRoom: document.getElementById('btn-stop-room'),
       btnJoinConnect: document.getElementById('btn-join-connect'),
       btnBackConnect: document.getElementById('btn-back-connect'),
@@ -104,6 +106,7 @@ const App = {
     this.els.btnJoinRoom.addEventListener('click', () => this.showView('join'));
     this.els.btnJoinRoomMain.addEventListener('click', () => this.showView('join'));
     this.els.btnCopyCode.addEventListener('click', () => this.copyRoomCode());
+    this.els.btnTogglePassword.addEventListener('click', () => this.togglePasswordVisibility());
     this.els.btnStopRoom.addEventListener('click', () => this.stopRoom());
     this.els.btnJoinConnect.addEventListener('click', () => this.joinRoom());
     this.els.btnBackConnect.addEventListener('click', () => this.showView('connect'));
@@ -166,7 +169,7 @@ const App = {
       this.state.wifiInfo = info;
       this.state.isHosting = true;
       if (this.els.roomCode) this.els.roomCode.textContent = info.ssid;
-      if (this.els.roomPassword) this.els.roomPassword.textContent = info.password;
+      if (this.els.roomPassword) this.els.roomPassword.textContent = this.state.passwordVisible ? info.password : '••••••••';
       this.showView('host');
       this.toggleScan();
     });
@@ -243,7 +246,7 @@ const App = {
       this.state.wifiInfo = result.info;
       this.state.isHosting = true;
       if (this.els.roomCode) this.els.roomCode.textContent = result.info.ssid;
-      if (this.els.roomPassword) this.els.roomPassword.textContent = result.info.password;
+      if (this.els.roomPassword) this.els.roomPassword.textContent = this.state.passwordVisible ? result.info.password : '••••••••';
       this.showView('host');
       this.toggleScan();
     } else {
@@ -262,6 +265,20 @@ const App = {
       }).catch(() => {
         this.els.btnCopyCode.textContent = 'Failed to copy';
       });
+    }
+  },
+
+  togglePasswordVisibility() {
+    this.state.passwordVisible = !this.state.passwordVisible;
+    const passwordEl = this.els.roomPassword;
+    const toggleBtn = this.els.btnTogglePassword;
+
+    if (this.state.passwordVisible) {
+      passwordEl.textContent = this.state.wifiInfo ? this.state.wifiInfo.password : 'qb123456';
+      toggleBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    } else {
+      passwordEl.textContent = '••••••••';
+      toggleBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
     }
   },
 

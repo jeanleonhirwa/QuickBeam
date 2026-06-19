@@ -282,8 +282,21 @@ class TransferEngine extends EventEmitter {
   }
 
   async cancelTransfer(transferId) {
-    const transfer = this.activeTransfers.get(transferId);
+    let transfer = this.activeTransfers.get(transferId);
     if (!transfer) {
+      transfer = this.pendingTransfers.get(transferId);
+      if (transfer) {
+        this.pendingTransfers.delete(transferId);
+        try {
+          if (transfer.socket && !transfer.socket.destroyed) {
+            transfer.socket.destroy();
+          }
+        } catch (err) {
+          console.error('Cancel pending transfer error:', err);
+        }
+        this.emit('transferFailed', { transferId, error: 'Cancelled by user' });
+        return { success: true };
+      }
       return { success: false, error: 'Transfer not found' };
     }
 
@@ -297,6 +310,7 @@ class TransferEngine extends EventEmitter {
           transferId
         });
         await this.sendLengthPrefixed(transfer.socket, cancelMessage);
+        transfer.socket.destroy();
       }
     } catch (err) {
       console.error('Cancel message error:', err);
@@ -486,6 +500,10 @@ class TransferEngine extends EventEmitter {
       }
     } catch (err) {
       console.error('Create download dir error:', err);
+      transfer.status = TRANSFER_STATUS.FAILED;
+      transfer.endTime = Date.now();
+      this.emit('transferFailed', { transferId: transfer.id, error: 'Cannot create download directory: ' + err.message });
+      return;
     }
 
     let currentFile = null;

@@ -1016,6 +1016,36 @@ body {
   margin-bottom: 24px;
 }
 
+.room-password-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.room-password-row .room-password-value {
+  margin-bottom: 0;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  background: var(--active-bg);
+  color: var(--text-primary);
+}
+
 .btn-copy {
   display: flex;
   align-items: center;
