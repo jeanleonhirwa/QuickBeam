@@ -52,7 +52,8 @@ contextBridge.exposeInMainWorld('quickbeam', {
   },
 
   files: {
-    drop: (filePaths) => ipcRenderer.invoke('files:drop', filePaths)
+    drop: (filePaths) => ipcRenderer.invoke('files:drop', filePaths),
+    listRecursive: (dirPath) => ipcRenderer.invoke('files:listRecursive', dirPath)
   },
 
   dialog: {

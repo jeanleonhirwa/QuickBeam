@@ -277,6 +277,31 @@ function setupIPC() {
     return filePaths || [];
   });
 
+  ipcMain.handle('files:listRecursive', async (event, dirPath) => {
+    const files = [];
+    const fs = require('fs');
+    const path = require('path');
+
+    const walkDir = (dir) => {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walkDir(fullPath);
+          } else {
+            files.push(fullPath);
+          }
+        }
+      } catch (err) {
+        console.error('Error reading directory:', dir, err.message);
+      }
+    };
+
+    walkDir(dirPath);
+    return files;
+  });
+
   // WiFi Direct handlers
   ipcMain.handle('wifi:supported', async () => {
     if (!wifiDirect) return false;

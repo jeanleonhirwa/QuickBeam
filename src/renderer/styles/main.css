@@ -1092,7 +1092,7 @@ body {
   width: 100%;
 }
 
-.btn-text {
+#view-join .btn-text {
   background: transparent;
   border: none;
   color: var(--text-secondary);
@@ -1101,7 +1101,7 @@ body {
   margin-top: 16px;
 }
 
-.btn-text:hover {
+#view-join .btn-text:hover {
   color: var(--text-primary);
 }
 

@@ -514,8 +514,11 @@ const App = {
   async addFolder() {
     const folder = await window.quickbeam.dialog.openFolder();
     if (folder) {
-      this.state.selectedFiles.push(folder);
-      this.renderSelectedFiles();
+      const files = await window.quickbeam.files.listRecursive(folder);
+      if (files.length > 0) {
+        this.state.selectedFiles = [...this.state.selectedFiles, ...files];
+        this.renderSelectedFiles();
+      }
     }
   },
 

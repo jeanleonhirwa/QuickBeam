@@ -346,6 +346,8 @@ class TransferEngine extends EventEmitter {
       let bytesSent = 0;
       let lastEmit = Date.now();
       let finished = false;
+      const speedWindow = [];
+      const SPEED_WINDOW_MS = 1000;
 
       const cleanup = () => {
         if (!finished) {
@@ -374,9 +376,15 @@ class TransferEngine extends EventEmitter {
             transfer.bytesTransferred += chunk.length;
 
             const now = Date.now();
+            speedWindow.push({ bytes: chunk.length, time: now });
+            while (speedWindow.length > 0 && now - speedWindow[0].time > SPEED_WINDOW_MS) {
+              speedWindow.shift();
+            }
+
             if (now - lastEmit > 100) {
-              const elapsed = (now - transfer.startTime) / 1000;
-              transfer.speed = elapsed > 0 ? transfer.bytesTransferred / elapsed : 0;
+              const windowBytes = speedWindow.reduce((sum, entry) => sum + entry.bytes, 0);
+              const windowTime = speedWindow.length > 1 ? (speedWindow[speedWindow.length - 1].time - speedWindow[0].time) / 1000 : 0.1;
+              transfer.speed = windowTime > 0 ? windowBytes / windowTime : 0;
               this.emit('transferProgress', {
                 transferId: transfer.id,
                 bytesTransferred: transfer.bytesTransferred,
