@@ -159,22 +159,29 @@ class TransferEngine extends EventEmitter {
     }));
   }
 
-  retryTransfer(transferId) {
+  async retryTransfer(transferId) {
     const transfer = this.activeTransfers.get(transferId);
     if (!transfer) {
       return { success: false, error: 'Transfer not found' };
     }
 
-    if (transfer.status === TRANSFER_STATUS.FAILED || transfer.status === TRANSFER_STATUS.CANCELLED) {
-      transfer.status = TRANSFER_STATUS.PENDING;
-      transfer.bytesTransferred = 0;
-      transfer.speed = 0;
-      transfer.startTime = null;
-      transfer.endTime = null;
-      this.activeTransfers.set(transferId, transfer);
-      return { success: true };
+    if (transfer.status !== TRANSFER_STATUS.FAILED && transfer.status !== TRANSFER_STATUS.CANCELLED) {
+      return { success: false, error: 'Transfer cannot be retried' };
     }
-    return { success: false, error: 'Transfer cannot be retried' };
+
+    if (transfer.socket && !transfer.socket.destroyed) {
+      transfer.socket.destroy();
+    }
+    transfer.socket = null;
+    transfer.status = TRANSFER_STATUS.PENDING;
+    transfer.bytesTransferred = 0;
+    transfer.speed = 0;
+    transfer.startTime = null;
+    transfer.endTime = null;
+
+    this.transferQueue.push(transferId);
+    this.processQueue();
+    return { success: true };
   }
 
   processQueue() {

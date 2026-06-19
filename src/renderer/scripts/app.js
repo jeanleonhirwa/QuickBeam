@@ -540,18 +540,6 @@ const App = {
       return;
     }
 
-    const totalSize = this.state.selectedFiles.reduce((sum, file) => {
-      try {
-        const name = file.split(/[/\\]/).pop();
-        if (name.includes('.')) {
-          return sum;
-        }
-        return sum;
-      } catch (e) {
-        return sum;
-      }
-    }, 0);
-
     this.els.selectedFiles.innerHTML = `
       <div class="selected-header">
         <span class="selected-count">${this.state.selectedFiles.length} item(s) selected</span>
@@ -559,14 +547,10 @@ const App = {
       </div>
       ${this.state.selectedFiles.map((file, index) => {
         const name = file.split(/[/\\]/).pop();
-        const isFolder = !name.includes('.');
         return `
           <div class="file-item">
-            <div class="file-icon ${isFolder ? 'folder' : 'file'}">
-              ${isFolder
-                ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19C22 20.1046 21.1046 21 20 21H4C2.89543 21 2 20.1046 2 19V5C2 3.89543 2.89543 3 4 3H9L11 6H20C21.1046 6 22 6.89543 22 8V19Z"/></svg>'
-                : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z"/><path d="M14 2V8H20"/></svg>'
-              }
+            <div class="file-icon file">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V8L14 2Z"/><path d="M14 2V8H20"/></svg>
             </div>
             <div class="file-info">
               <div class="file-name">${name}</div>

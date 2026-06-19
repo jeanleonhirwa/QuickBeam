@@ -142,7 +142,7 @@ function initializeServices() {
 
   wifiDirect.initialize().then(supported => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('wifi:supported', supported);
+      mainWindow.webContents.send('wifi:supportedEvent', supported);
     }
   }).catch(err => {
     console.error('WiFi Direct init error:', err);

@@ -15,6 +15,7 @@ class NetworkManager extends EventEmitter {
     this.broadcastSocket = null;
     this.serverSocket = null;
     this.broadcastTimer = null;
+    this.cleanupTimer = null;
     this.localIP = getLocalIP();
     this.hostname = getHostname();
     this.started = false;
@@ -285,6 +286,10 @@ class NetworkManager extends EventEmitter {
       clearInterval(this.broadcastTimer);
       this.broadcastTimer = null;
     }
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
   }
 
   broadcastPresence() {
@@ -310,7 +315,7 @@ class NetworkManager extends EventEmitter {
   }
 
   cleanupStaleDevices() {
-    setInterval(() => {
+    this.cleanupTimer = setInterval(() => {
       const now = Date.now();
       for (const [id, device] of this.devices) {
         if (now - device.lastSeen > 10000) {
