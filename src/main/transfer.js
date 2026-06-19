@@ -340,62 +340,97 @@ class TransferEngine extends EventEmitter {
   }
 
   sendFileChunk(transfer, file) {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const fileStream = fs.createReadStream(file.path);
-      const fileSize = file.size;
       let bytesSent = 0;
       let lastEmit = Date.now();
+      let finished = false;
 
-      fileStream.on('data', async (chunk) => {
-        try {
-          fileStream.pause();
-
-          const header = JSON.stringify({
-            type: MESSAGE_TYPES.FILE_DATA,
-            transferId: transfer.id,
-            fileName: file.name,
-            offset: bytesSent,
-            size: chunk.length
-          });
-          await this.sendLengthPrefixed(transfer.socket, header);
-          await this.sendLengthPrefixed(transfer.socket, chunk);
-
-          bytesSent += chunk.length;
-          transfer.bytesTransferred += chunk.length;
-
-          const now = Date.now();
-          if (now - lastEmit > 100) {
-            const elapsed = (now - transfer.startTime) / 1000;
-            transfer.speed = elapsed > 0 ? transfer.bytesTransferred / elapsed : 0;
-            this.emit('transferProgress', {
-              transferId: transfer.id,
-              bytesTransferred: transfer.bytesTransferred,
-              totalSize: transfer.totalSize,
-              speed: transfer.speed,
-              fileName: file.name
-            });
-            lastEmit = now;
-          }
-
-          fileStream.resume();
-        } catch (err) {
+      const cleanup = () => {
+        if (!finished) {
+          finished = true;
           fileStream.destroy();
-          reject(err);
+        }
+      };
+
+      fileStream.on('data', (chunk) => {
+        if (finished) return;
+        fileStream.pause();
+
+        const header = JSON.stringify({
+          type: MESSAGE_TYPES.FILE_DATA,
+          transferId: transfer.id,
+          fileName: file.name,
+          offset: bytesSent,
+          size: chunk.length
+        });
+
+        this.sendLengthPrefixed(transfer.socket, header)
+          .then(() => this.sendLengthPrefixed(transfer.socket, chunk))
+          .then(() => {
+            if (finished) return;
+            bytesSent += chunk.length;
+            transfer.bytesTransferred += chunk.length;
+
+            const now = Date.now();
+            if (now - lastEmit > 100) {
+              const elapsed = (now - transfer.startTime) / 1000;
+              transfer.speed = elapsed > 0 ? transfer.bytesTransferred / elapsed : 0;
+              this.emit('transferProgress', {
+                transferId: transfer.id,
+                bytesTransferred: transfer.bytesTransferred,
+                totalSize: transfer.totalSize,
+                speed: transfer.speed,
+                fileName: file.name
+              });
+              lastEmit = now;
+            }
+
+            fileStream.resume();
+          })
+          .catch((err) => {
+            cleanup();
+            reject(err);
+          });
+      });
+
+      fileStream.on('end', () => {
+        if (!finished) {
+          finished = true;
+          resolve();
         }
       });
 
-      fileStream.on('end', resolve);
-      fileStream.on('error', reject);
+      fileStream.on('error', (err) => {
+        if (!finished) {
+          finished = true;
+          reject(err);
+        }
+      });
     });
   }
 
   sendLengthPrefixed(socket, data) {
     return new Promise((resolve, reject) => {
+      if (socket.destroyed) {
+        reject(new Error('Socket is destroyed'));
+        return;
+      }
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
       const lenBuf = Buffer.alloc(4);
       lenBuf.writeUInt32BE(buf.length, 0);
-      socket.write(lenBuf, () => {
-        socket.write(buf, resolve);
+      socket.write(lenBuf, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        socket.write(buf, (err2) => {
+          if (err2) {
+            reject(err2);
+          } else {
+            resolve();
+          }
+        });
       });
     });
   }
@@ -458,8 +493,15 @@ class TransferEngine extends EventEmitter {
               if (fileStream) {
                 fileStream.end();
               }
+              const safeName = path.basename(message.fileName);
+              const filePath = path.join(downloadPath, safeName);
+              const resolvedPath = path.resolve(filePath);
+              const resolvedDownload = path.resolve(downloadPath);
+              if (!resolvedPath.startsWith(resolvedDownload)) {
+                console.error('Path traversal attempt blocked:', message.fileName);
+                continue;
+              }
               currentFile = message.fileName;
-              const filePath = path.join(downloadPath, message.fileName);
               fileStream = fs.createWriteStream(filePath);
             }
 

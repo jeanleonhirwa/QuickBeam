@@ -1,5 +1,6 @@
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -24,7 +25,8 @@ class WifiCommands {
   }
 
   static generatePassword() {
-    return 'qb' + Math.random().toString(36).substring(2, 10);
+    const bytes = crypto.randomBytes(8);
+    return 'qb' + bytes.toString('hex');
   }
 
   static async createHostedNetwork(ssid, password) {
@@ -77,13 +79,24 @@ class WifiCommands {
     return match ? parseInt(match[1]) : 0;
   }
 
+  static escapeXml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
   static async connectToNetwork(ssid, password) {
+    const safeSsid = this.escapeXml(ssid);
+    const safePassword = this.escapeXml(password);
     const profileXml = `<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
-  <name>${ssid}</name>
+  <name>${safeSsid}</name>
   <SSIDConfig>
     <SSID>
-      <name>${ssid}</name>
+      <name>${safeSsid}</name>
     </SSID>
   </SSIDConfig>
   <connectionType>ESS</connectionType>
@@ -98,7 +111,7 @@ class WifiCommands {
       <sharedKey>
         <keyType>passPhrase</keyType>
         <protected>false</protected>
-        <keyMaterial>${password}</keyMaterial>
+        <keyMaterial>${safePassword}</keyMaterial>
       </sharedKey>
     </security>
   </MSM>

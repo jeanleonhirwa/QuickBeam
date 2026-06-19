@@ -5,9 +5,10 @@ const { NETWORK, MESSAGE_TYPES, DEVICE_STATUS, APP_ID, APP_VERSION } = require('
 const { generateId, getLocalIP, getHostname } = require('../shared/utils');
 
 class NetworkManager extends EventEmitter {
-  constructor(settings) {
+  constructor(settings, storage) {
     super();
     this.settings = settings;
+    this.storage = storage;
     this.deviceId = generateId();
     this.devices = new Map();
     this.pairedDevices = new Map();
@@ -255,11 +256,15 @@ class NetworkManager extends EventEmitter {
   handlePairAccept(message) {
     const pending = this.pendingPairs.get(message.requestId);
     if (pending) {
-      this.pairedDevices.set(pending.deviceId, {
+      const pairedDevice = {
         ...pending,
         pairedAt: Date.now()
-      });
+      };
+      this.pairedDevices.set(pending.deviceId, pairedDevice);
       this.pendingPairs.delete(message.requestId);
+      if (this.storage) {
+        this.storage.addPairedDevice(pairedDevice);
+      }
       this.emit('pairAccepted', pending);
     }
   }
