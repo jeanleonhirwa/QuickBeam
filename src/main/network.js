@@ -394,11 +394,15 @@ class NetworkManager extends EventEmitter {
 
       request.socket.write(message);
 
-      this.pairedDevices.set(request.deviceId, {
+      const pairedDevice = {
         ...request,
         pairedAt: Date.now()
-      });
+      };
+      this.pairedDevices.set(request.deviceId, pairedDevice);
       this.pendingPairs.delete(requestId);
+      if (this.storage) {
+        this.storage.addPairedDevice(pairedDevice);
+      }
 
       return { success: true };
     } catch (err) {

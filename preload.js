@@ -1,5 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+function onChannel(channel, callback) {
+  ipcRenderer.removeAllListeners(channel);
+  ipcRenderer.on(channel, (event, ...args) => callback(...args));
+}
+
 contextBridge.exposeInMainWorld('quickbeam', {
   window: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -16,17 +21,17 @@ contextBridge.exposeInMainWorld('quickbeam', {
     startScan: () => ipcRenderer.invoke('devices:startScan'),
     stopScan: () => ipcRenderer.invoke('devices:stopScan'),
     getList: () => ipcRenderer.invoke('devices:getList'),
-    onFound: (callback) => ipcRenderer.on('device-found', (event, device) => callback(device)),
-    onLost: (callback) => ipcRenderer.on('device-lost', (event, deviceId) => callback(deviceId))
+    onFound: (callback) => onChannel('device-found', callback),
+    onLost: (callback) => onChannel('device-lost', callback)
   },
 
   pair: {
     request: (deviceId) => ipcRenderer.invoke('pair:request', deviceId),
     accept: (requestId) => ipcRenderer.invoke('pair:accept', requestId),
     reject: (requestId) => ipcRenderer.invoke('pair:reject', requestId),
-    onRequest: (callback) => ipcRenderer.on('pair-request', (event, request) => callback(request)),
-    onAccepted: (callback) => ipcRenderer.on('pair-accepted', (event, device) => callback(device)),
-    onRejected: (callback) => ipcRenderer.on('pair-rejected', (event, deviceId) => callback(deviceId))
+    onRequest: (callback) => onChannel('pair-request', callback),
+    onAccepted: (callback) => onChannel('pair-accepted', callback),
+    onRejected: (callback) => onChannel('pair-rejected', callback)
   },
 
   transfer: {
@@ -36,10 +41,10 @@ contextBridge.exposeInMainWorld('quickbeam', {
     cancel: (transferId) => ipcRenderer.invoke('transfer:cancel', transferId),
     getQueue: () => ipcRenderer.invoke('transfer:getQueue'),
     retry: (transferId) => ipcRenderer.invoke('transfer:retry', transferId),
-    onRequest: (callback) => ipcRenderer.on('transfer-request', (event, request) => callback(request)),
-    onProgress: (callback) => ipcRenderer.on('transfer-progress', (event, progress) => callback(progress)),
-    onComplete: (callback) => ipcRenderer.on('transfer-complete', (event, transfer) => callback(transfer)),
-    onFailed: (callback) => ipcRenderer.on('transfer-failed', (event, error) => callback(error))
+    onRequest: (callback) => onChannel('transfer-request', callback),
+    onProgress: (callback) => onChannel('transfer-progress', callback),
+    onComplete: (callback) => onChannel('transfer-complete', callback),
+    onFailed: (callback) => onChannel('transfer-failed', callback)
   },
 
   connection: {
@@ -68,9 +73,9 @@ contextBridge.exposeInMainWorld('quickbeam', {
     status: () => ipcRenderer.invoke('wifi:status'),
     cleanup: () => ipcRenderer.invoke('wifi:cleanup'),
     stop: () => ipcRenderer.invoke('wifi:stop'),
-    onSupported: (callback) => ipcRenderer.on('wifi:supportedEvent', (e, v) => callback(v)),
-    onNetworkReady: (callback) => ipcRenderer.on('wifi:networkReady', (e, info) => callback(info)),
-    onConnected: (callback) => ipcRenderer.on('wifi:connected', (e, info) => callback(info)),
-    onDisconnected: (callback) => ipcRenderer.on('wifi:disconnected', () => callback())
+    onSupported: (callback) => onChannel('wifi:supportedEvent', callback),
+    onNetworkReady: (callback) => onChannel('wifi:networkReady', callback),
+    onConnected: (callback) => onChannel('wifi:connected', callback),
+    onDisconnected: (callback) => onChannel('wifi:disconnected', callback)
   }
 });

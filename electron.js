@@ -48,7 +48,7 @@ function initializeServices() {
   storage = new Storage();
 
   const NetworkManager = require('./src/main/network');
-  networkManager = new NetworkManager(storage.getSettings());
+  networkManager = new NetworkManager(storage.getSettings(), storage);
 
   const TransferEngine = require('./src/main/transfer');
   transferEngine = new TransferEngine(storage, networkManager);

@@ -152,6 +152,7 @@ class TransferEngine extends EventEmitter {
   }
 
   getQueue() {
+    this.transferQueue = this.transferQueue.filter(id => this.activeTransfers.has(id));
     return this.transferQueue.map((id, index) => ({
       id,
       position: index + 1,
