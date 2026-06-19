@@ -226,13 +226,19 @@ class TransferEngine extends EventEmitter {
     };
 
     this.pendingTransfers.set(transferId, transfer);
-    this.emit('transferRequest', {
-      id: transferId,
-      deviceId: message.deviceId,
-      hostname: message.hostname,
-      files: message.files,
-      totalSize: transfer.totalSize
-    });
+
+    const settings = this.storage.getSettings();
+    if (settings.autoAccept) {
+      await this.acceptTransfer(transferId);
+    } else {
+      this.emit('transferRequest', {
+        id: transferId,
+        deviceId: message.deviceId,
+        hostname: message.hostname,
+        files: message.files,
+        totalSize: transfer.totalSize
+      });
+    }
   }
 
   async acceptTransfer(transferId) {
